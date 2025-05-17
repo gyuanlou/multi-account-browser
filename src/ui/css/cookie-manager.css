@@ -1,0 +1,99 @@
+/* cookie-manager.css - Cookie 管理页面样式 */
+
+.cookie-manager-page {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* 日期选择器弹出层的高 z-index 样式 */
+.date-picker-higher-z-index {
+  z-index: 10000 !important;
+}
+
+/* 确保日期选择器弹出层的容器也有高 z-index */
+body > .el-popper {
+  z-index: 10000 !important;
+}
+
+.cookie-manager-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 20px;
+  align-items: center;
+}
+
+.profile-selector {
+  min-width: 200px;
+}
+
+.url-input {
+  flex-grow: 1;
+  min-width: 300px;
+}
+
+.storage-type {
+  margin-left: auto;
+}
+
+.cookie-manager-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 20px;
+  align-items: center;
+}
+
+.export-import {
+  display: flex;
+  gap: 10px;
+}
+
+.search-input {
+  margin-left: auto;
+  width: 250px;
+}
+
+.data-table {
+  margin-top: 20px;
+}
+
+.cookie-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  align-items: center;
+}
+
+.cookie-option {
+  margin-top: 10px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .cookie-manager-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .storage-type {
+    margin-left: 0;
+    margin-top: 10px;
+  }
+  
+  .cookie-manager-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .search-input {
+    margin-left: 0;
+    width: 100%;
+  }
+  
+  .export-import {
+    width: 100%;
+    justify-content: space-between;
+  }
+}

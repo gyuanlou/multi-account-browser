@@ -1,0 +1,80 @@
+name: 构建多平台安装包
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: 设置 Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16
+      - name: 安装依赖
+        run: npm ci
+      - name: 构建 Linux 版本
+        run: npm run build
+      - name: 上传 Linux 构建产物
+        uses: actions/upload-artifact@v3
+        with:
+          name: linux-build
+          path: dist/*.AppImage
+          
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: 设置 Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16
+      - name: 安装依赖
+        run: npm ci
+      - name: 构建 Windows 版本
+        run: npm run build:win
+      - name: 上传 Windows 构建产物
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows-build
+          path: dist/*.exe
+          
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: 设置 Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16
+      - name: 安装依赖
+        run: npm ci
+      - name: 构建 macOS 版本
+        run: npm run build:mac
+      - name: 上传 macOS 构建产物
+        uses: actions/upload-artifact@v3
+        with:
+          name: macos-build
+          path: dist/*.dmg
+          
+  create-release:
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载所有构建产物
+        uses: actions/download-artifact@v3
+        with:
+          path: all-artifacts
+      
+      - name: 创建发布
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            all-artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

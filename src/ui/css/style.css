@@ -1,0 +1,257 @@
+/* 全局样式 */
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "微软雅黑", Arial, sans-serif;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* 顶部导航栏样式 */
+.header-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  overflow: hidden;
+}
+
+.logo span {
+  margin-left: 10px;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.app-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #409EFF;
+  white-space: nowrap;
+  /* 防止文本闪烁 */
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 主内容区域样式 */
+.main-container {
+  display: flex;
+  height: calc(100vh - 120px);
+}
+
+/* 配置管理页面样式 */
+.profile-container {
+  display: flex;
+  height: 100%;
+}
+
+.profile-sidebar {
+  width: 350px;
+  border-right: 1px solid #e6e6e6;
+  padding: 10px;
+}
+
+.profile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.profile-content {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.profile-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.profile-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-item .action-btn {
+  opacity: 0.2;
+  transition: opacity 0.3s;
+  transform: scale(0.9);
+}
+
+.profile-item:hover .action-btn {
+  opacity: 1;
+}
+
+.profile-item .launch-btn {
+  color: #409EFF;
+}
+
+.profile-item .delete-btn {
+  color: #F56C6C;
+}
+
+/* 浏览器实例页面样式 */
+.instances-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+  padding: 20px;
+}
+
+.instance-card {
+  border: 1px solid #e6e6e6;
+  border-radius: 4px;
+  padding: 15px;
+}
+
+/* 状态栏样式 */
+.status-bar {
+  height: 30px;
+  border-top: 1px solid #e6e6e6;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  background-color: #f5f7fa;
+  font-size: 12px;
+}
+
+/* 表单样式 */
+.form-container {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.form-actions {
+  margin-top: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* 指纹测试结果样式 */
+.fingerprint-test-results {
+  margin-top: 20px;
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  padding: 15px;
+  background-color: var(--background-color-light);
+}
+
+.fingerprint-test-results h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.setting-description {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 5px;
+  line-height: 1.5;
+}
+
+/* 账号管理样式 */
+.accounts-list {
+  margin-bottom: 20px;
+}
+
+.account-item {
+  margin-bottom: 15px;
+}
+
+.account-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.account-header h4 {
+  margin: 0;
+}
+
+.account-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.add-account {
+  margin-top: 15px;
+  text-align: center;
+}
+
+/* 地理位置选择器样式 */
+.geo-location-map {
+  height: 300px;
+  margin-bottom: 20px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+}
+
+.test-result {
+  margin-top: 15px;
+}
+
+/* 标签页样式 */
+.tab-content {
+  padding: 20px 0;
+}
+
+/* 分页容器样式 */
+.pagination-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 15px;
+  border-top: 1px solid #e6e6e6;
+  background-color: #f5f7fa;
+  font-size: 13px;
+}
+
+.pagination-info {
+  color: #606266;
+  white-space: nowrap;
+  margin-right: 15px;
+}
+
+/* 小屏幕上的分页样式调整 */
+@media (max-width: 768px) {
+  .pagination-container {
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+  }
+  
+  .pagination-info {
+    margin-right: 0;
+    margin-bottom: 5px;
+  }
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .profile-container {
+    flex-direction: column;
+  }
+  
+  .profile-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #e6e6e6;
+  }
+}

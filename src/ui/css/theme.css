@@ -1,0 +1,292 @@
+/* theme.css - 主题样式 */
+
+/* 浅色主题 */
+.theme-light {
+  --primary-color: #409EFF;
+  --success-color: #67C23A;
+  --warning-color: #E6A23C;
+  --danger-color: #F56C6C;
+  --info-color: #909399;
+  
+  --text-primary: #303133;
+  --text-regular: #606266;
+  --text-secondary: #909399;
+  --text-placeholder: #C0C4CC;
+  
+  --border-color: #DCDFE6;
+  --border-light: #E4E7ED;
+  --border-lighter: #EBEEF5;
+  --border-extra-light: #F2F6FC;
+  
+  --background-color: #FFFFFF;
+  --background-color-light: #F5F7FA;
+  --background-color-darker: #EBEEF5;
+  
+  --shadow-color: rgba(0, 0, 0, 0.1);
+  --shadow-light: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  --shadow-base: 0 2px 4px rgba(0, 0, 0, .12), 0 0 6px rgba(0, 0, 0, .04);
+  --shadow-dark: 0 2px 4px rgba(0, 0, 0, .12), 0 0 6px rgba(0, 0, 0, .12);
+}
+
+/* 深色主题 */
+.theme-dark {
+  --primary-color: #409EFF;
+  --success-color: #67C23A;
+  --warning-color: #E6A23C;
+  --danger-color: #F56C6C;
+  --info-color: #909399;
+  
+  --text-primary: #E5EAF3;
+  --text-regular: #CFD3DC;
+  --text-secondary: #A3A6AD;
+  --text-placeholder: #8D9095;
+  
+  --border-color: #4C4D4F;
+  --border-light: #414243;
+  --border-lighter: #363637;
+  --border-extra-light: #2B2B2C;
+  
+  --background-color: #141414;
+  --background-color-light: #1E1E1E;
+  --background-color-darker: #0F0F0F;
+  
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --shadow-light: 0 2px 12px 0 rgba(0, 0, 0, 0.3);
+  --shadow-base: 0 2px 4px rgba(0, 0, 0, .32), 0 0 6px rgba(0, 0, 0, .24);
+  --shadow-dark: 0 2px 4px rgba(0, 0, 0, .32), 0 0 6px rgba(0, 0, 0, .32);
+}
+
+/* 应用主题变量 */
+body {
+  color: var(--text-regular);
+  background-color: var(--background-color);
+  transition: background-color 0.3s, color 0.3s;
+}
+
+.app-container {
+  background-color: var(--background-color);
+}
+
+.sidebar {
+  background-color: var(--background-color-light);
+  border-right: 1px solid var(--border-color);
+}
+
+.main-content {
+  background-color: var(--background-color);
+}
+
+.card {
+  background-color: var(--background-color);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-light);
+}
+
+.status-bar {
+  background-color: var(--background-color-light);
+  border-top: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+/* 导航栏 */
+.nav-bar {
+  background-color: var(--background-color-light);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.nav-item {
+  color: var(--text-regular);
+}
+
+.nav-item.active, .nav-item:hover {
+  color: var(--primary-color);
+}
+
+/* 列表项 */
+.list-item {
+  border-bottom: 1px solid var(--border-lighter);
+}
+
+.list-item:hover {
+  background-color: var(--background-color-light);
+}
+
+.list-item.active {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+/* 表单元素 */
+input, textarea, select {
+  background-color: var(--background-color);
+  border: 1px solid var(--border-color);
+  color: var(--text-regular);
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--primary-color);
+}
+
+/* 标签页 */
+.tab-content {
+  background-color: var(--background-color);
+}
+
+/* 实例卡片 */
+.instance-card {
+  background-color: var(--background-color);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-light);
+}
+
+.instance-header {
+  border-bottom: 1px solid var(--border-lighter);
+}
+
+/* 空状态 */
+.empty-state {
+  color: var(--text-secondary);
+}
+
+/* 按钮 */
+.custom-button {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.custom-button.success {
+  background-color: var(--success-color);
+}
+
+.custom-button.warning {
+  background-color: var(--warning-color);
+}
+
+.custom-button.danger {
+  background-color: var(--danger-color);
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background-color-light);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+/* 动画 */
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.3s;
+}
+
+.fade-enter, .fade-leave-to {
+  opacity: 0;
+}
+
+.slide-enter-active, .slide-leave-active {
+  transition: transform 0.3s;
+}
+
+.slide-enter, .slide-leave-to {
+  transform: translateX(-100%);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    z-index: 100;
+    width: 80%;
+    max-width: 300px;
+    transform: translateX(-100%);
+    transition: transform 0.3s;
+  }
+  
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  
+  .main-content {
+    margin-left: 0;
+  }
+}
+
+/* 主题切换器 */
+.theme-switcher {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 10px;
+}
+
+.theme-toggle-btn {
+  font-size: 18px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.3s;
+  background: transparent;
+  border: none;
+  padding: 5px;
+  border-radius: 50%;
+}
+
+.theme-toggle-btn:hover {
+  color: var(--primary-color);
+}
+
+.theme-dark .theme-toggle-btn .el-icon-sunny {
+  color: #FFD700; /* 金色太阳 */
+}
+
+.theme-light .theme-toggle-btn .el-icon-moon {
+  color: #6E7B8B; /* 深灰色月亮 */
+}
+
+/* 设置页面样式 */
+.settings-page {
+  padding: 20px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.settings-section {
+  margin-bottom: 30px;
+  padding: 20px;
+  background-color: var(--background-color);
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-light);
+}
+
+.settings-section h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 500;
+  border-bottom: 1px solid var(--border-lighter);
+  padding-bottom: 10px;
+}
+
+.setting-description {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 5px;
+  line-height: 1.5;
+}
+
+.about-actions {
+  margin-top: 20px;
+  display: flex;
+  gap: 10px;
+}

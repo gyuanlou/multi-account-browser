@@ -1,0 +1,43 @@
+{
+  "theme": "system",
+  "language": "zh-CN",
+  "autoBackup": {
+    "enabled": false,
+    "interval": "daily",
+    "keepCount": 5
+  },
+  "security": {
+    "masterPasswordEnabled": false,
+    "masterPasswordHash": null,
+    "autoLock": false,
+    "lockAfterMinutes": 30
+  },
+  "performance": {
+    "maxInstances": 5,
+    "resourceSaving": "balanced",
+    "closeInactiveAfter": 0
+  },
+  "ui": {
+    "sidebarWidth": 280,
+    "showStatusBar": true,
+    "showToolbar": true,
+    "defaultTab": "profiles"
+  },
+  "automation-task-d60dc2de-3b17-4007-abd9-d69ed9b303cb": null,
+  "automation-task-f2284e90-4de5-4d19-a8c5-2889d439a89d": null,
+  "automation-task-f978d58d-b6c9-4aba-a80f-f2f8e6ec3858": null,
+  "automation-task-3d7a1501-ed9f-428b-ab40-d7b14fc98a59": {
+    "name": "test",
+    "description": "",
+    "profileId": "d714d056-b57b-4f43-b097-6c14d3a73f38",
+    "type": "script",
+    "runTime": "manual",
+    "closeAfterComplete": true,
+    "status": "running",
+    "lastRun": "2025-05-16T11:22:02.624Z",
+    "nextRun": null,
+    "lastLog": "",
+    "id": "3d7a1501-ed9f-428b-ab40-d7b14fc98a59",
+    "script": "{\n  \"name\": \"百度搜索测试\",\n  \"description\": \"访问百度并搜索指定内容\",\n  \"steps\": [\n    {\n      \"type\": \"navigate\",\n      \"url\": \"https://www.baidu.com\",\n      \"waitUntil\": \"networkidle2\"\n    },\n    {\n      \"type\": \"input\",\n      \"selector\": \"#kw\",\n      \"value\": \"自动化测试\",\n      \"humanize\": true\n    },\n    {\n      \"type\": \"click\",\n      \"selector\": \"#su\",\n      \"humanize\": true\n    },\n    {\n      \"type\": \"wait\",\n      \"timeout\": 3000\n    }\n  ],\n  \"variables\": {}\n}"
+  }
+}
