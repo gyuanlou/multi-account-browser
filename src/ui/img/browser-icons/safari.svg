@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="safariGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2196F3"/>
+      <stop offset="100%" style="stop-color:#0D47A1"/>
+    </linearGradient>
+  </defs>
+  <circle cx="50" cy="50" r="45" fill="white" stroke="#E0E0E0" stroke-width="2"/>
+  <circle cx="50" cy="50" r="40" fill="white" stroke="url(#safariGradient)" stroke-width="3"/>
+  <path d="M50,50 L70,30" stroke="#FF3D00" stroke-width="3" stroke-linecap="round"/>
+  <path d="M50,50 L30,70" stroke="#FF3D00" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="50" cy="50" r="3" fill="#FF3D00"/>
+  <path d="M50,10 L50,15 M90,50 L85,50 M50,90 L50,85 M10,50 L15,50" stroke="#0D47A1" stroke-width="3" stroke-linecap="round"/>
+  <path d="M25,15 L28,18 M85,25 L82,28 M75,85 L72,82 M15,75 L18,72" stroke="#0D47A1" stroke-width="2" stroke-linecap="round"/>
+</svg>

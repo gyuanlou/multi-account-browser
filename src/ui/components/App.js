@@ -19,10 +19,12 @@ const App = {
             <profile-list 
               :profiles="profiles" 
               :selected-profile-id="selectedProfileId"
+              :running-instances="runningInstances"
               @select-profile="selectProfile"
               @create-profile="createNewProfile"
               @delete-profile="deleteProfile"
-              @launch-browser="launchBrowser">
+              @launch-browser="launchBrowser"
+              @close-browser="closeBrowser">
             </profile-list>
             
             <div class="profile-content" v-if="selectedProfile">
@@ -350,10 +352,15 @@ const App = {
     // 关闭浏览器
     async closeBrowser(profileId) {
       try {
+        console.log(`尝试关闭浏览器实例: ${profileId}`);
         await window.ipcRenderer.invoke('close-browser', profileId);
         this.$message.success('浏览器已关闭');
-        this.refreshRunningInstances();
+        // 延迟刷新实例列表，等待浏览器完全关闭
+        setTimeout(() => {
+          this.refreshRunningInstances();
+        }, 500);
       } catch (error) {
+        console.error(`关闭浏览器失败: ${error.message}`);
         this.$message.error('关闭浏览器失败: ' + error.message);
       }
     },

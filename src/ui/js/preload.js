@@ -58,6 +58,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
       'close-browser',
       'open-dev-tools',
       'capture-screenshot',
+      'get-installed-browsers',
       
       // 代理和指纹管理
       'test-proxy',

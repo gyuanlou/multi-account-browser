@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
-const puppeteer = require('puppeteer-core');
+const { chromium, firefox, webkit } = require('playwright');
 const browserManager = require('./browser-manager');
 
 class CookieManager {
@@ -57,22 +57,18 @@ class CookieManager {
       // 获取浏览器实例
       const browser = await this.connectToBrowser(profileId);
       
-      // 创建 CDP 会话来获取 Cookie
-      const page = await browser.newPage();
-      const client = await page.target().createCDPSession();
+      // 使用 Playwright 的 context 来获取 Cookie
+      // Playwright 不使用 CDP 会话，而是直接使用 context.cookies() 方法
+      let cookiesList = [];
       
-      // 获取 Cookie
-      let cookies;
       if (url) {
-        cookies = await client.send('Network.getCookies', { urls: [url] });
+        // 获取特定 URL 的 Cookie
+        cookiesList = await browser.cookies([url]);
       } else {
-        cookies = await client.send('Network.getAllCookies');
+        // 获取所有 Cookie
+        cookiesList = await browser.cookies();
       }
       
-      // 关闭页面
-      await page.close();
-      
-      const cookiesList = cookies.cookies || [];
       console.log(`从浏览器中获取到 ${cookiesList.length} 个 Cookie`);
       
       return cookiesList;
@@ -106,21 +102,24 @@ class CookieManager {
       const browser = await this.connectToBrowser(profileId);
       console.log('成功连接到浏览器');
       
-      // 创建 CDP 会话来设置 Cookie
-      console.log('创建新页面...');
-      const page = await browser.newPage();
-      console.log('创建 CDP 会话...');
-      const client = await page.target().createCDPSession();
+      // 使用 Playwright 的 API 设置 Cookie
+      console.log('设置 Cookie...');
+      
+      // 转换 cookie 格式为 Playwright 格式
+      const playwrightCookie = {
+        name: cookie.name,
+        value: cookie.value,
+        domain: cookie.domain,
+        path: cookie.path || '/',
+        expires: cookie.expires,
+        httpOnly: cookie.httpOnly,
+        secure: cookie.secure,
+        sameSite: cookie.sameSite
+      };
       
       // 设置 Cookie
-      console.log('设置 Cookie...');
-      await client.send('Network.setCookie', cookie);
-      console.log('Network.setCookie 调用成功');
-      
-      // 关闭页面
-      console.log('关闭页面...');
-      await page.close();
-      console.log('页面已关闭');
+      await browser.addCookies([playwrightCookie]);
+      console.log('Cookie 设置成功');
       
       // 保存到配置文件
       try {
@@ -212,12 +211,6 @@ class CookieManager {
       const browser = await this.connectToBrowser(profileId);
       console.log('成功连接到浏览器');
       
-      // 创建 CDP 会话来删除 Cookie
-      console.log('创建新页面...');
-      const page = await browser.newPage();
-      console.log('创建 CDP 会话...');
-      const client = await page.target().createCDPSession();
-      
       // 获取域名
       let domain;
       try {
@@ -228,19 +221,25 @@ class CookieManager {
         throw new Error(`无效的 URL: ${url}`);
       }
       
-      // 删除 Cookie
-      console.log(`准备删除 Cookie: ${name} 从 ${url}`);
-      await client.send('Network.deleteCookies', { 
-        name: name,
-        domain: domain,  // 使用域名而不是 URL
-        path: '/'  // 指定路径为根路径，确保删除所有路径下的同名 Cookie
-      });
-      console.log('Network.deleteCookies 调用成功');
+      // 获取当前所有 Cookie
+      console.log(`获取当前 Cookie...`);
+      const cookies = await browser.cookies([url]);
       
-      // 关闭页面
-      console.log('关闭页面...');
-      await page.close();
-      console.log('页面已关闭');
+      // 找到要删除的 Cookie
+      const cookieToDelete = cookies.find(c => c.name === name && c.domain.includes(domain));
+      
+      if (cookieToDelete) {
+        // 使用 Playwright 的 API 删除 Cookie
+        console.log(`准备删除 Cookie: ${name} 从 ${domain}`);
+        await browser.deleteCookies({
+          name: name,
+          domain: cookieToDelete.domain,
+          path: cookieToDelete.path
+        });
+        console.log('Cookie 删除成功');
+      } else {
+        console.log(`未找到要删除的 Cookie: ${name}`);
+      }
       
       // 从配置文件中删除 Cookie
       try {
@@ -320,16 +319,18 @@ class CookieManager {
       const browser = await this.connectToBrowser(profileId);
       console.log('成功连接到浏览器');
       
-      // 创建 CDP 会话
+      // 使用 Playwright 的 API 获取 Cookie
+      console.log(`获取域名 ${domain} 的所有 Cookie`);
+      
+      // 在 Playwright 中，我们可以直接使用 context.cookies() 方法
+      const cookiesList = await browser.cookies([url]);
+      
+      // 如果需要使用 CDP 功能，可以创建一个页面和 CDP 会话
       console.log('创建新页面...');
       const page = await browser.newPage();
       console.log('创建 CDP 会话...');
-      const client = await page.target().createCDPSession();
-      
-      // 获取当前域名的所有 Cookie
-      console.log(`获取域名 ${domain} 的所有 Cookie`);
-      const cookies = await client.send('Network.getCookies', { urls: [url] });
-      const cookiesList = cookies.cookies || [];
+      // 使用 Playwright 的 CDP 会话 API
+      const client = await page.context().newCDPSession(page);
       console.log(`获取到 ${cookiesList.length} 个 Cookie`);
       
       // 如果没有 Cookie，直接返回
@@ -410,24 +411,35 @@ class CookieManager {
       // 获取浏览器实例
       const browser = await this.connectToBrowser(profileId);
       
-      // 创建 CDP 会话来清除 Cookie
-      const page = await browser.newPage();
-      const client = await page.target().createCDPSession();
-      
       if (url) {
-        // 获取指定 URL 的所有 Cookie
-        const cookies = await client.send('Network.getCookies', { urls: [url] });
+        // 使用 Playwright API 获取并删除指定 URL 的 Cookie
+        const cookies = await browser.cookies([url]);
         
         // 逐个删除 Cookie
-        for (const cookie of cookies.cookies || []) {
-          await client.send('Network.deleteCookies', { 
+        for (const cookie of cookies) {
+          await browser.deleteCookies({
             name: cookie.name,
-            url: url
+            domain: cookie.domain,
+            path: cookie.path
           });
         }
       } else {
-        // 清除所有 Cookie
+        // 清除所有 Cookie - 在 Playwright 中没有直接的方法清除所有 Cookie
+        // 我们需要获取所有 Cookie 然后逐个删除
+        const allCookies = await browser.cookies();
+        for (const cookie of allCookies) {
+          await browser.deleteCookies({
+            name: cookie.name,
+            domain: cookie.domain,
+            path: cookie.path
+          });
+        }
+        
+        // 如果需要使用 CDP 功能，可以创建一个页面和 CDP 会话
+        const page = await browser.newPage();
+        const client = await page.context().newCDPSession(page);
         await client.send('Network.clearBrowserCookies');
+        await page.close();
       }
       
       // 关闭页面
@@ -485,15 +497,25 @@ class CookieManager {
       // 获取浏览器实例
       const browser = await this.connectToBrowser(profileId);
       
-      // 创建 CDP 会话来设置 Cookie
-      const page = await browser.newPage();
-      const client = await page.target().createCDPSession();
-      
+      // 使用 Playwright API 设置 Cookie
       // 逐个设置 Cookie
       let successCount = 0;
       for (const cookie of cookies) {
         try {
-          await client.send('Network.setCookie', cookie);
+          // 转换 cookie 格式为 Playwright 格式
+          const playwrightCookie = {
+            name: cookie.name,
+            value: cookie.value,
+            domain: cookie.domain,
+            path: cookie.path || '/',
+            expires: cookie.expires,
+            httpOnly: cookie.httpOnly,
+            secure: cookie.secure,
+            sameSite: cookie.sameSite
+          };
+          
+          // 设置 Cookie
+          await browser.addCookies([playwrightCookie]);
           successCount++;
         } catch (setCookieError) {
           console.warn(`设置 Cookie 失败: ${cookie.name}`, setCookieError);
@@ -704,21 +726,50 @@ class CookieManager {
    */
   async connectToBrowser(profileId) {
     try {
-      // 检查是否有正在运行的浏览器实例
-      const runningInstance = browserManager.getRunningInstance(profileId);
+      console.log(`尝试连接到配置文件 ID 为 ${profileId} 的浏览器实例`);
       
-      if (!runningInstance) {
+      // 检查是否有正在运行的浏览器实例
+      if (!browserManager.browserInstances.has(profileId)) {
+        console.log(`没有找到配置文件 ID 为 ${profileId} 的浏览器实例记录`);
         throw new Error(`没有找到配置文件 ID 为 ${profileId} 的正在运行的浏览器实例`);
       }
       
-      // 直接使用已经存在的浏览器实例
-      // 而不是尝试重新连接
-      if (runningInstance.browser) {
-        console.log('使用现有浏览器实例');
-        return runningInstance.browser;
+      const instance = browserManager.browserInstances.get(profileId);
+      console.log(`找到浏览器实例，状态: ${instance.status}`);
+      
+      // 检查实例状态
+      if (instance.status !== 'running') {
+        console.log(`浏览器实例已经不在运行状态，当前状态: ${instance.status}`);
+        throw new Error(`浏览器实例已经不在运行状态，当前状态: ${instance.status}`);
       }
       
-      // 如果没有现有实例，尝试启动新的浏览器
+      // 直接使用已经存在的浏览器实例
+      if (instance.browser) {
+        console.log('使用现有浏览器实例');
+        
+        // 检查浏览器实例是否有效
+        try {
+          // 对于 Playwright 实例，我们可以检查连接状态
+          if (typeof instance.browser.isConnected === 'function') {
+            if (!instance.browser.isConnected()) {
+              console.log('浏览器实例已断开连接');
+              throw new Error('浏览器实例已断开连接');
+            }
+          }
+          
+          // 注意：不再检查 _connection.isConnected，因为这个方法可能不存在
+          
+          // 如果检查通过，返回浏览器实例
+          return instance.browser;
+        } catch (connectionError) {
+          console.error('检查浏览器连接状态时出错:', connectionError);
+          // 如果连接已断开，尝试重新启动浏览器
+          instance.status = 'closed';
+          throw new Error(`浏览器实例连接已断开: ${connectionError.message}`);
+        }
+      }
+      
+      // 如果没有浏览器实例，尝试启动新的浏览器
       console.log('尝试启动新的浏览器实例');
       const browser = await browserManager.launchBrowser(profileId);
       return browser;

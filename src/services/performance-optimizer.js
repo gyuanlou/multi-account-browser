@@ -242,10 +242,10 @@ class PerformanceOptimizer {
           // 尝试关闭不必要的浏览器标签页
           try {
             // 尝试连接到浏览器实例
-            const puppeteer = require('puppeteer-core');
-            const browser = await puppeteer.connect({
-              browserURL: `http://localhost:${runningInstance.debugPort || 9222}`,
-              defaultViewport: null
+            const { chromium } = require('playwright');
+            const browser = await chromium.connectOverCDP({
+              endpointURL: `http://localhost:${runningInstance.debugPort || 9222}`,
+              // Playwright 不需要 defaultViewport 参数
             }).catch(e => {
               console.log(`直接连接失败: ${e.message}`);
               return null;
@@ -254,11 +254,22 @@ class PerformanceOptimizer {
             if (!browser) continue;
             
             try {
-              // 获取所有页面
-              const pages = await browser.pages().catch(e => {
+              // 获取所有页面 - 在 Playwright 中使用 context.pages()
+              // 首先确定是否有 context
+              let pages = [];
+              try {
+                if (browser.contexts && browser.contexts().length > 0) {
+                  // 如果是 browser 对象，获取所有 context 的页面
+                  for (const context of browser.contexts()) {
+                    pages = pages.concat(await context.pages());
+                  }
+                } else {
+                  // 如果是 context 对象
+                  pages = await browser.pages();
+                }
+              } catch (e) {
                 console.log(`获取页面失败: ${e.message}`);
-                return [];
-              });
+              }
               
               // 如果有多个页面，对不活跃的页面应用优化
               if (pages.length > 1) {

@@ -15,8 +15,10 @@ const ProfileList = {
             v-for="profile in paginatedProfiles" 
             :key="profile.id" 
             :profile="profile"
+            :is-running="isProfileRunning(profile.id)"
             @delete="deleteProfile"
-            @launch="launchBrowser">
+            @launch="launchBrowser"
+            @close="closeBrowser">
           </profile-list-item>
         </el-menu>
       </el-scrollbar>
@@ -46,6 +48,10 @@ const ProfileList = {
     selectedProfileId: {
       type: String,
       default: null
+    },
+    runningInstances: {
+      type: Array,
+      default: () => []
     }
   },
   
@@ -97,13 +103,19 @@ const ProfileList = {
   },
   
   methods: {
+    // 判断配置文件是否有运行中的实例
+    isProfileRunning(profileId) {
+      return this.runningInstances.some(instance => instance.profileId === profileId && instance.status === 'running');
+    },
+    
     selectProfile(profileId) {
       this.$emit('select-profile', profileId);
     },
     
     handlePageChange(page) {
-      console.log('切换到页码:', page);
       this.currentPage = page;
+      
+      // 如果当前选中的配置不在当前页，自动选择当前页的第一个配置
       this.updateSelectedProfile();
     },
     
@@ -147,7 +159,11 @@ const ProfileList = {
     launchBrowser(profileId) {
       console.log('启动浏览器实例:', profileId);
       this.$emit('launch-browser', profileId);
-      console.log('已发送 launch-browser 事件');
+    },
+    
+    closeBrowser(profileId) {
+      console.log('关闭浏览器实例:', profileId);
+      this.$emit('close-browser', profileId);
     }
   }
 };

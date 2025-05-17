@@ -2,7 +2,7 @@
  * 自动化服务
  * 负责浏览器自动化操作和脚本管理
  */
-const puppeteer = require('puppeteer-core');
+const { chromium, firefox, webkit } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
@@ -398,15 +398,15 @@ class AutomationRunner {
    * @returns {Promise<Object>} 执行结果
    */
   async run() {
+    // 对于 Playwright，我们已经有了 context，只需要创建新页面
     const page = await this.browser.newPage();
     const results = [];
     
     try {
-      // 设置页面视口大小
-      await page.setViewport({
+      // 设置页面视口大小 - Playwright 使用不同的 API
+      await page.setViewportSize({
         width: 1280,
-        height: 800,
-        deviceScaleFactor: 1
+        height: 800
       });
       
       // 设置默认超时时间
@@ -472,7 +472,7 @@ class AutomationRunner {
   
   /**
    * 执行单个步骤
-   * @param {Object} page Puppeteer 页面对象
+   * @param {Object} page Playwright 页面对象
    * @param {Object} step 步骤定义
    * @returns {Promise<any>} 执行结果
    */
@@ -488,19 +488,23 @@ class AutomationRunner {
     
     switch (step.type) {
       case 'navigate':
-        return await page.goto(processValue(step.url), { waitUntil: 'networkidle2' });
+        // Playwright 使用 'domcontentloaded' 或 'networkidle' 而不是 'networkidle2'
+        return await page.goto(processValue(step.url), { waitUntil: 'networkidle' });
         
       case 'wait':
         if (step.selector) {
+          // Playwright 使用 waitForSelector 方法，但选项不同
           return await page.waitForSelector(processValue(step.selector), { 
             timeout: step.timeout || 30000,
-            visible: step.visible !== false
+            state: step.visible !== false ? 'visible' : 'attached'
           });
         } else if (step.time) {
+          // Playwright 使用 page.waitForTimeout
           return await page.waitForTimeout(step.time);
         } else if (step.navigation) {
+          // Playwright 使用 page.waitForNavigation
           return await page.waitForNavigation({ 
-            waitUntil: step.waitUntil || 'networkidle2',
+            waitUntil: step.waitUntil === 'networkidle2' ? 'networkidle' : step.waitUntil || 'networkidle',
             timeout: step.timeout || 30000
           });
         }
@@ -510,28 +514,30 @@ class AutomationRunner {
         const selector = processValue(step.selector);
         const value = processValue(step.value);
         
-        await page.waitForSelector(selector, { visible: true });
+        // Playwright 使用 waitForSelector 方法，但选项不同
+        await page.waitForSelector(selector, { state: 'visible' });
         
         // 清除现有内容
         if (step.clearFirst !== false) {
-          await page.evaluate((sel) => {
-            document.querySelector(sel).value = '';
-          }, selector);
+          // Playwright 有一个特定的清除方法
+          await page.fill(selector, '');
         }
         
         if (step.humanize) {
           await this.humanTypeText(page, selector, value);
         } else {
-          await page.type(selector, value);
+          // Playwright 使用 fill 或 type
+          await page.fill(selector, value);
         }
         return true;
         
       case 'click':
         const clickSelector = processValue(step.selector);
-        await page.waitForSelector(clickSelector, { visible: true });
+        // Playwright 使用 waitForSelector 方法，但选项不同
+        await page.waitForSelector(clickSelector, { state: 'visible' });
         
         if (step.humanize) {
-          // 模拟人类点击
+          // 模拟人类点击 - Playwright 的 API 类似
           const element = await page.$(clickSelector);
           const box = await element.boundingBox();
           
@@ -545,29 +551,33 @@ class AutomationRunner {
           await page.waitForTimeout(50 + Math.random() * 100);
           await page.mouse.up();
         } else {
+          // Playwright 的点击方法
           await page.click(clickSelector);
         }
         return true;
         
       case 'select':
-        await page.select(
+        // Playwright 使用 selectOption 而不是 select
+        await page.selectOption(
           processValue(step.selector), 
           processValue(step.value)
         );
         return true;
         
       case 'screenshot':
+        // Playwright 的 screenshot 选项类似但有一些不同
         const screenshotOptions = {
           fullPage: step.fullPage === true,
           path: step.path ? processValue(step.path) : undefined,
           type: step.type || 'png',
-          quality: step.quality || 80
+          quality: step.type === 'jpeg' ? (step.quality || 80) : undefined
         };
         return await page.screenshot(screenshotOptions);
         
       case 'extract':
         const extractSelector = processValue(step.selector);
-        await page.waitForSelector(extractSelector, { visible: true });
+        // Playwright 使用 waitForSelector 方法，但选项不同
+        await page.waitForSelector(extractSelector, { state: 'visible' });
         
         const result = await page.evaluate((sel, attr) => {
           const element = document.querySelector(sel);
@@ -611,16 +621,20 @@ class AutomationRunner {
   
   /**
    * 模拟人类输入文本
-   * @param {Object} page Puppeteer 页面对象
+   * @param {Object} page Playwright 页面对象
    * @param {string} selector 元素选择器
    * @param {string} text 要输入的文本
    */
   async humanTypeText(page, selector, text) {
-    await page.focus(selector);
+    // Playwright 的元素选择和聚焦方法
+    const element = await page.$(selector);
+    await element.focus();
     
-    for (const char of text) {
-      await page.keyboard.type(char);
-      // 随机延迟 50-150ms
+    // 模拟人类打字速度
+    for (let i = 0; i < text.length; i++) {
+      // Playwright 的键盘输入方法
+      await page.keyboard.type(text[i]);
+      // 随机暂停时间，模拟人类打字节奏
       await page.waitForTimeout(50 + Math.random() * 100);
     }
   }

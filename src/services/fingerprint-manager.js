@@ -384,15 +384,34 @@ class FingerprintManager {
         const instance = browserManager.getRunningInstance(profileId);
         
         if (instance && instance.browser) {
-          // 获取所有页面
-          const pages = await instance.browser.pages();
+          // 获取所有页面 - 在 Playwright 中使用 context.pages()
+          // 首先确定是否有 context
+          let pages = [];
+          let context;
           
+          if (instance.browser.contexts && instance.browser.contexts().length > 0) {
+            // 如果是 browser 对象，获取所有 context 的页面
+            context = instance.browser.contexts()[0];
+            pages = await context.pages();
+          } else {
+            // 如果是 context 对象
+            context = instance.browser;
+            pages = await context.pages();
+          }
+          
+          // 应用指纹到所有页面
           for (const page of pages) {
-            // 创建 CDP 会话
-            const client = await page.target().createCDPSession();
-            
-            // 应用指纹
-            await this.applyFingerprintToCDP(client, newFingerprint);
+            try {
+              // 在 Playwright 中，我们可以使用 page.context().addInitScript 来注入脚本
+              // 或者使用 CDP 会话（如果需要特定的 CDP 功能）
+              const session = await page.context().newCDPSession(page);
+              
+              // 应用指纹
+              await this.applyFingerprintToCDP(session, newFingerprint);
+            } catch (pageError) {
+              console.warn(`应用指纹到页面失败:`, pageError);
+              // 继续处理下一个页面
+            }
           }
           
           console.log(`已将新指纹应用到 ${pages.length} 个页面`);

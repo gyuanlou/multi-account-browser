@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
-const puppeteer = require('puppeteer-core');
+const { chromium, firefox, webkit } = require('playwright');
 const crypto = require('crypto');
 
 class EnhancedFingerprintManager {
@@ -479,45 +479,54 @@ class EnhancedFingerprintManager {
   
   /**
    * 应用指纹配置到浏览器
-   * @param {Object} browser Puppeteer 浏览器实例
+   * @param {Object} browser Playwright 浏览器实例
    * @param {Object} fingerprintConfig 指纹配置
    * @returns {Promise<boolean>} 是否应用成功
    */
   async applyFingerprint(browser, fingerprintConfig) {
     try {
+      // 在 Playwright 中，我们通常使用 context 而不是直接使用 browser
+      // 如果传入的是 context，直接使用；如果是 browser，则创建一个新的 context
+      const context = browser.contexts ? browser.contexts()[0] : browser;
+      
       // 获取浏览器页面
-      const pages = await browser.pages();
-      const page = pages.length > 0 ? pages[0] : await browser.newPage();
+      const pages = await context.pages();
+      const page = pages.length > 0 ? pages[0] : await context.newPage();
       
       // 生成指纹防护脚本
       const fingerprintScript = this.generateFingerprintScript(fingerprintConfig);
       
-      // 在页面加载前注入脚本
-      await page.evaluateOnNewDocument(fingerprintScript);
+      // 在 Playwright 中，我们使用 addInitScript 而不是 evaluateOnNewDocument
+      await context.addInitScript(fingerprintScript);
       
-      // 设置 User-Agent
-      await page.setUserAgent(fingerprintConfig.userAgent);
-      
-      // 设置视口大小
-      await page.setViewport({
-        width: fingerprintConfig.screenWidth || 1920,
-        height: fingerprintConfig.screenHeight || 1080,
-        deviceScaleFactor: fingerprintConfig.devicePixelRatio || 1
+      // 设置 User-Agent - 在 Playwright 中，这通常在创建 context 时设置
+      // 如果已经创建了 context，我们可以在页面级别设置
+      await page.setExtraHTTPHeaders({
+        'User-Agent': fingerprintConfig.userAgent
       });
       
-      // 设置时区
-      const client = await page.target().createCDPSession();
-      await client.send('Emulation.setTimezoneOverride', {
-        timezoneId: fingerprintConfig.timezone || 'Asia/Shanghai'
+      // 设置视口大小 - Playwright 使用 setViewportSize 而不是 setViewport
+      await page.setViewportSize({
+        width: fingerprintConfig.screen?.width || 1920,
+        height: fingerprintConfig.screen?.height || 1080
+        // Playwright 不支持在 setViewportSize 中设置 deviceScaleFactor
       });
       
-      // 设置地理位置（如果有）
+      // 设置时区 - Playwright 使用不同的方式创建 CDP 会话
+      // 在 Playwright 中，我们可以直接使用 context.setLocale 和 context.setTimezone
+      await context.setTimezone(fingerprintConfig.timezone || 'Asia/Shanghai');
+      
+      // 设置地理位置（如果有） - Playwright 使用不同的 API
       if (fingerprintConfig.geolocation) {
-        await client.send('Emulation.setGeolocationOverride', {
+        // 在 Playwright 中，我们可以直接设置 context 的地理位置
+        await context.setGeolocation({
           latitude: fingerprintConfig.geolocation.latitude || 0,
           longitude: fingerprintConfig.geolocation.longitude || 0,
           accuracy: 100
         });
+        
+        // 注意：还需要授予地理位置权限
+        await context.grantPermissions(['geolocation']);
       }
       
       return true;
@@ -529,14 +538,25 @@ class EnhancedFingerprintManager {
   
   /**
    * 测试指纹防护效果
-   * @param {Object} browser Puppeteer 浏览器实例
+   * @param {Object} browser Playwright 浏览器实例
    * @returns {Promise<Object>} 测试结果
    */
   async testFingerprintProtection(browser) {
     try {
-      // 获取浏览器页面
+      // 获取浏览器页面 - 在 Playwright 中使用 context.pages()
       console.log('获取浏览器页面...');
-      const pages = await browser.pages();
+      
+      // 首先确定是否有 context
+      let pages = [];
+      if (browser.contexts && browser.contexts().length > 0) {
+        // 如果是 browser 对象，获取第一个 context 的页面
+        const context = browser.contexts()[0];
+        pages = await context.pages();
+      } else {
+        // 如果是 context 对象
+        pages = await browser.pages();
+      }
+      
       const page = pages.length > 0 ? pages[0] : await browser.newPage();
       
       // 创建一个本地测试页面

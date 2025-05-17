@@ -25,6 +25,7 @@ let settingsService;
 let cookieManager;
 let enhancedFingerprintManager;
 let performanceOptimizer;
+let browserFactory;
 
 // 初始化服务模块
 function initializeServices() {
@@ -44,6 +45,7 @@ function initializeServices() {
     cookieManager = require('./src/services/cookie-manager');
     enhancedFingerprintManager = require('./src/services/enhanced-fingerprint-manager');
     performanceOptimizer = require('./src/services/performance-optimizer');
+    browserFactory = require('./src/services/browser-factory');
     console.log('增强服务模块加载成功');
   } catch (error) {
     console.error('加载增强服务模块失败:', error);
@@ -271,12 +273,30 @@ function registerIPCHandlers() {
     }
   });
 
-  ipcMain.handle('close-browser', (event, profileId) => {
-    return browserManager.closeBrowser(profileId);
+  ipcMain.handle('close-browser', async (event, profileId) => {
+    console.log(`主进程收到关闭浏览器请求: ${profileId}`);
+    try {
+      const result = await browserManager.closeBrowser(profileId);
+      console.log(`浏览器关闭结果: ${result ? '成功' : '失败'}`);
+      return result;
+    } catch (error) {
+      console.error(`关闭浏览器出错: ${error.message}`);
+      throw error;
+    }
   });
 
   ipcMain.handle('get-running-instances', () => {
     return browserManager.getRunningInstances();
+  });
+  
+  // 浏览器工厂相关
+  ipcMain.handle('get-installed-browsers', () => {
+    try {
+      return browserFactory.detectInstalledBrowsers();
+    } catch (error) {
+      console.error(`获取已安装浏览器失败: ${error.message}`);
+      return [];
+    }
   });
 
   // 指纹管理

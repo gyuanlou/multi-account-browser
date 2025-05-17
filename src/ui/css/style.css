@@ -88,12 +88,23 @@ body {
 
 .profile-item .action-btn {
   opacity: 0.2;
-  transition: opacity 0.3s;
+  transition: opacity 0.3s, transform 0.2s;
   transform: scale(0.9);
 }
 
 .profile-item:hover .action-btn {
   opacity: 1;
+  transform: scale(1);
+}
+
+/* 运行中的配置项样式 */
+.profile-active {
+  background-color: rgba(64, 158, 255, 0.1) !important;
+}
+
+.profile-active .action-btn {
+  opacity: 1 !important;
+  transform: scale(1) !important;
 }
 
 .profile-item .launch-btn {
