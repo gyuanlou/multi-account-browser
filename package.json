@@ -29,6 +29,7 @@
     "bootstrap": "^5.2.3",
     "electron-store": "^8.2.0",
     "express": "^4.18.2",
+    "extract-zip": "^2.0.1",
     "https-proxy-agent": "^7.0.2",
     "playwright": "^1.40.0",
     "socks-proxy-agent": "^7.0.0",
@@ -51,9 +52,37 @@
     "nodeGypRebuild": false,
     "asar": true,
     "asarUnpack": [
-      "node_modules/playwright*/**/*",
-      "node_modules/https-proxy-agent/**/*",
-      "node_modules/socks-proxy-agent/**/*"
+      "node_modules/playwright*/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/https-proxy-agent",
+        "to": "app.asar.unpacked/node_modules/https-proxy-agent"
+      },
+      {
+        "from": "node_modules/socks-proxy-agent",
+        "to": "app.asar.unpacked/node_modules/socks-proxy-agent"
+      },
+      {
+        "from": "node_modules/extract-zip",
+        "to": "app.asar.unpacked/node_modules/extract-zip"
+      },
+      {
+        "from": "node_modules/archiver",
+        "to": "app.asar.unpacked/node_modules/archiver"
+      },
+      {
+        "from": "node_modules/axios",
+        "to": "app.asar.unpacked/node_modules/axios"
+      },
+      {
+        "from": "node_modules/electron-store",
+        "to": "app.asar.unpacked/node_modules/electron-store"
+      },
+      {
+        "from": "node_modules/uuid",
+        "to": "app.asar.unpacked/node_modules/uuid"
+      }
     ],
     "compression": "maximum",
     "artifactName": "${productName}-${version}.${ext}",
