@@ -17,7 +17,11 @@
     "simple": "node -e \"const { execSync } = require('child_process'); try { console.log('Starting Electron app...'); execSync('electron . --no-sandbox', { stdio: 'inherit' }); } catch (e) { console.error('Failed to start Electron app:', e); }\"",
     "direct": "electron direct-main.js --no-sandbox"
   },
-  "author": "",
+  "author": {
+    "name": "Multi-Account Browser Team",
+    "email": "gyuanlou@gmail.com",
+    "url": "https://github.com/gyuanlou/multi-account-browser"
+  },
   "license": "MIT",
   "dependencies": {
     "archiver": "^7.0.1",
