@@ -19,7 +19,7 @@
 
 ### 安装说明
 
-1. 从 [GitHub Releases](https://github.com/yourusername/multi-account-browser/releases) 下载最新版本
+1. 从 [GitHub Releases](https://github.com/gyuanlou/multi-account-browser/releases) 下载最新版本
 2. 根据您的操作系统选择相应的安装包：
    - Windows: `.exe` 或 `.msi` 文件
    - macOS: `.dmg` 文件
@@ -84,7 +84,7 @@ The Multi-Account Browser Manager is an application designed for users who need 
 
 ### Installation
 
-1. Download the latest version from [GitHub Releases](https://github.com/yourusername/multi-account-browser/releases)
+1. Download the latest version from [GitHub Releases](https://github.com/gyuanlou/multi-account-browser/releases)
 2. Choose the appropriate installation package for your operating system:
    - Windows: `.exe` or `.msi` file
    - macOS: `.dmg` file
