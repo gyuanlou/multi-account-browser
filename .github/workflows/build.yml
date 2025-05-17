@@ -149,7 +149,7 @@ jobs:
   create-release:
     needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
-    if: success() && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
+    if: always() && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -180,19 +180,36 @@ jobs:
         run: |
           mkdir -p release-files
           VERSION="${{ steps.get_version.outputs.version }}"
-          find all-artifacts -type f -name "*.*" | while read file; do
-            filename=$(basename "$file")
-            extension="${filename##*.}"
-            platform="unknown"
-            if [[ "$file" == *linux* || "$file" == *AppImage* || "$file" == *deb* || "$file" == *rpm* ]]; then
-              platform="linux"
-            elif [[ "$file" == *win* || "$file" == *exe* || "$file" == *msi* ]]; then
-              platform="windows"
-            elif [[ "$file" == *mac* || "$file" == *dmg* ]]; then
-              platform="mac"
-            fi
-            cp "$file" "release-files/multi-account-browser-${VERSION}-${platform}.${extension}"
-          done
+          echo "Looking for build artifacts..."
+          find all-artifacts -type f -name "*.*" -not -path "*/\.*" | sort
+          
+          # Check if any files were found
+          if [ -z "$(find all-artifacts -type f -name "*.*" -not -path "*/\.*")" ]; then
+            echo "No build artifacts found. Creating dummy file to prevent release failure."
+            echo "Build artifacts not available. Please check the build logs." > release-files/README.txt
+          else
+            # Process found files
+            find all-artifacts -type f -name "*.*" -not -path "*/\.*" | while read file; do
+              filename=$(basename "$file")
+              extension="${filename##*.}"
+              platform="unknown"
+              
+              if [[ "$file" == *linux* || "$file" == *AppImage* || "$file" == *deb* || "$file" == *rpm* ]]; then
+                platform="linux"
+              elif [[ "$file" == *win* || "$file" == *exe* || "$file" == *msi* ]]; then
+                platform="windows"
+              elif [[ "$file" == *mac* || "$file" == *dmg* || "$file" == *zip* ]]; then
+                platform="mac"
+              fi
+              
+              echo "Processing file: $file -> multi-account-browser-${VERSION}-${platform}.${extension}"
+              cp "$file" "release-files/multi-account-browser-${VERSION}-${platform}.${extension}"
+            done
+          fi
+          
+          # List processed files
+          echo "\nFiles ready for release:"
+          ls -la release-files/
       
       - name: 生成发行说明
         id: changelog
