@@ -55,8 +55,6 @@ class ChromeAdapter extends BrowserAdapter {
    */
   cleanupUserData(userDataDir) {
     try {
-      console.log(`清理 Chrome 用户数据目录: ${userDataDir}`);
-      
       // 清理锁文件
       const lockFiles = [
         'SingletonLock',
@@ -70,7 +68,6 @@ class ChromeAdapter extends BrowserAdapter {
         const lockFilePath = path.join(userDataDir, lockFile);
         if (fs.existsSync(lockFilePath)) {
           fs.unlinkSync(lockFilePath);
-          console.log(`删除锁文件: ${lockFilePath}`);
         }
       }
       
@@ -88,10 +85,8 @@ class ChromeAdapter extends BrowserAdapter {
         if (fs.existsSync(filePath)) {
           if (fs.statSync(filePath).isDirectory()) {
             // 如果是目录，不删除，只清空
-            console.log(`目录存在，但不删除: ${filePath}`);
           } else {
             fs.unlinkSync(filePath);
-            console.log(`删除文件: ${filePath}`);
           }
         }
       }
@@ -131,11 +126,9 @@ class ChromeAdapter extends BrowserAdapter {
       try {
         // 使用系统下载目录作为默认下载路径
         downloadPath = app.getPath('downloads');
-        console.log(`使用系统下载目录: ${downloadPath}`);
       } catch (error) {
         // 如果无法获取系统下载目录，使用用户数据目录下的 Downloads 文件夹
         downloadPath = path.join(userDataDir, 'Downloads');
-        console.log(`使用自定义下载目录: ${downloadPath}`);
         
         // 确保下载目录存在
         if (!fs.existsSync(downloadPath)) {
@@ -189,8 +182,6 @@ class ChromeAdapter extends BrowserAdapter {
     // 添加代理设置
     if (profile.proxy && profile.proxy.enabled) {
       const { type, host, port, username, password } = profile.proxy;
-      
-      console.log(`浏览器使用代理: ${type}://${host}:${port}`);
       
       let proxyUrl = '';
       if (type === 'socks4' || type === 'socks5') {
@@ -249,7 +240,6 @@ class ChromeAdapter extends BrowserAdapter {
     
     // 获取预加载脚本路径
     const preloadPath = path.join(process.cwd(), 'src', 'preload', 'download-handler.js');
-    console.log(`预加载脚本路径: ${preloadPath}`);
     
     // 确保预加载脚本存在
     if (!fs.existsSync(preloadPath)) {
@@ -261,7 +251,6 @@ class ChromeAdapter extends BrowserAdapter {
     let downloadPath = '';
     if (downloadPathArg) {
       downloadPath = downloadPathArg.split('=')[1];
-      console.log(`设置 Playwright 下载路径: ${downloadPath}`);
     }
     
     // 使用 Playwright 启动 Chrome
@@ -290,11 +279,8 @@ class ChromeAdapter extends BrowserAdapter {
             const suggestedFilename = await download.suggestedFilename();
             const savePath = path.join(downloadDir, suggestedFilename);
             
-            console.log(`文件正在下载到: ${savePath}`);
-            
             // 使用 Playwright 的 saveAs 方法指定文件名和保存路径
             await download.saveAs(savePath);
-            console.log(`文件已保存到: ${savePath}`);
             
             // 添加延时，确保文件完全保存
             await new Promise(resolve => setTimeout(resolve, 500));

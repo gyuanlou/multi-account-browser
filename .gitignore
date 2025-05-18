@@ -49,3 +49,6 @@ build/Release
 # 操作系统文件
 .DS_Store
 Thumbs.db
+
+# 浏览器配置文件
+browser_profiles/

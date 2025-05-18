@@ -123,17 +123,14 @@ class BrowserManager extends EventEmitter {
       }
       
       baseUserDataDir = path.join(app.getPath('userData'), 'browser_profiles');
-      console.log(`用户数据目录: ${baseUserDataDir}`);
     } catch (error) {
       console.error('获取用户数据目录时出错:', error);
       // 在非 Electron 环境中使用当前目录作为备选
       baseUserDataDir = path.join(process.cwd(), 'browser_profiles');
-      console.log(`使用备选用户数据目录: ${baseUserDataDir}`);
       
       // 确保目录存在
       if (!fs.existsSync(baseUserDataDir)) {
         fs.mkdirSync(baseUserDataDir, { recursive: true });
-        console.log(`创建用户数据目录: ${baseUserDataDir}`);
       }
     }
     
@@ -155,7 +152,6 @@ class BrowserManager extends EventEmitter {
     if (!fs.existsSync(userDataDir)) {
       try {
         fs.mkdirSync(userDataDir, { recursive: true });
-        console.log(`创建用户数据目录: ${userDataDir}`);
       } catch (e) {
         console.error(`创建用户数据目录失败: ${userDataDir}`, e);
       }
@@ -164,7 +160,6 @@ class BrowserManager extends EventEmitter {
     // 清理浏览器特定的锁定文件
     try {
       await adapter.cleanupUserData(userDataDir);
-      console.log(`清理浏览器用户数据目录成功: ${userDataDir}`);
     } catch (error) {
       console.error(`清理浏览器用户数据目录失败: ${error.message}`);
     }
@@ -175,9 +170,7 @@ class BrowserManager extends EventEmitter {
     // 构建启动参数
     const launchArgs = adapter.buildLaunchArgs(profile, userDataDir, debugPort, options);
     
-    console.log(`正在启动 ${browserType} 浏览器，配置文件 ID: ${profileId}`);
-    console.log(`调试端口: ${debugPort}`);
-    console.log(`用户数据目录: ${userDataDir}`);
+    // 启动浏览器
 
     try {
       // 准备启动选项
@@ -185,14 +178,10 @@ class BrowserManager extends EventEmitter {
       
       // 添加启动URL
       if (!launchOptions.url && !launchOptions.startUrl) {
-        // 如果配置了启始页，使用配置的启始页
         if (profile.startup && profile.startup.startUrl) {
           launchOptions.startUrl = profile.startup.startUrl;
-          console.log(`使用配置的启始页: ${launchOptions.startUrl}`);
         } else {
-          // 否则使用默认启始页
           launchOptions.startUrl = 'https://www.baidu.com';
-          console.log(`使用默认启始页: ${launchOptions.startUrl}`);
         }
       }
       
@@ -342,7 +331,6 @@ class BrowserManager extends EventEmitter {
         };
       }
       
-      console.log(`浏览器实例启动成功，返回实例对象`);
       return browser;
     } catch (error) {
       console.error(`启动浏览器失败: ${error.message}`);
@@ -357,7 +345,6 @@ class BrowserManager extends EventEmitter {
    */
   async closeBrowser(profileId) {
     if (!this.browserInstances.has(profileId)) {
-      console.log(`浏览器实例 ${profileId} 不存在`);
       return false;
     }
     
@@ -365,7 +352,6 @@ class BrowserManager extends EventEmitter {
     
     // 如果实例已经关闭，直接返回
     if (instance.status === INSTANCE_STATUS.CLOSED || instance.status === INSTANCE_STATUS.ERROR) {
-      console.log(`浏览器实例 ${profileId} 已经关闭`);
       return true;
     }
     
@@ -400,22 +386,16 @@ class BrowserManager extends EventEmitter {
   */
   getRunningInstances() {
     const instances = [];
-    console.log(`开始获取运行中的浏览器实例，当前实例数量: ${this.browserInstances.size}`);
-    
     for (const [profileId, instance] of this.browserInstances.entries()) {
-      console.log(`检查实例 ${profileId} 状态: ${instance.status}`);
-      
       // 只检查标记为运行中的实例
       if (instance.status === INSTANCE_STATUS.RUNNING) {
         // 基本检查：浏览器对象是否存在
         if (!instance.browser) {
-          console.log(`实例 ${profileId} 没有浏览器对象，标记为已关闭`);
           this._markInstanceAsClosed(profileId, 'no-browser-object');
           continue;
         }
         
         // 添加到运行中的实例列表
-        console.log(`实例 ${profileId} 正在运行，状态: ${instance.status}`);
         instances.push({
           profileId,
           profileName: instance.profileName,
@@ -426,7 +406,6 @@ class BrowserManager extends EventEmitter {
       }
     }
     
-    console.log(`找到 ${instances.length} 个运行中的实例`);
     return instances;
   }
   
@@ -495,8 +474,6 @@ class BrowserManager extends EventEmitter {
     
     // 如果状态没有变化，不做任何操作
     if (oldStatus === status) return;
-    
-    console.log(`更新实例 ${profileId} 状态: ${oldStatus} -> ${status}, 原因: ${reason}`);
     
     // 更新状态
     instance.status = status;

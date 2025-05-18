@@ -1458,10 +1458,184 @@ async clearCookies(profileId, url = null) {
         // 如果关闭页面失败，可能是浏览器已关闭，忽略错误
       }
       
+      // 保存到配置文件
+      try {
+        const profileManager = require('./profile-manager');
+        const profile = profileManager.getProfileById(profileId);
+        
+        if (profile) {
+          // 确保 storage 数组存在
+          if (!profile.storage) {
+            profile.storage = [];
+          }
+          
+          // 提取域名
+          const urlObj = new URL(url);
+          const domain = urlObj.hostname;
+          
+          if (domain) {
+            // 查找当前域名的存储记录
+            let domainStorage = profile.storage.find(
+              s => s.domain === domain && s.type === storageType
+            );
+            
+            if (!domainStorage) {
+              // 如果不存在，创建新的域名记录
+              domainStorage = {
+                domain: domain,
+                type: storageType,
+                items: []
+              };
+              profile.storage.push(domainStorage);
+            }
+            
+            // 确保 items 数组存在
+            if (!domainStorage.items) {
+              domainStorage.items = [];
+            }
+            
+            // 清空现有项，然后添加新项
+            domainStorage.items = [];
+            
+            // 将对象转换为数组格式
+            for (const key in data) {
+              if (Object.prototype.hasOwnProperty.call(data, key)) {
+                domainStorage.items.push({
+                  key: key,
+                  value: data[key]
+                });
+              }
+            }
+            
+            // 保存更新后的配置文件
+            profileManager.saveProfile(profile);
+            console.log(`已保存 ${domainStorage.items.length} 个 ${storageType} 存储项到配置文件`);
+          }
+        }
+      } catch (profileError) {
+        console.warn('保存存储项到配置文件失败:', profileError);
+        // 保存到配置文件失败不应该影响整个操作的成功
+      }
+      
       return true;
     } catch (error) {
       console.error('设置本地存储失败:', error);
       // 不抛出错误，而是返回失败
+      return false;
+    }
+  }
+
+  /**
+   * 从配置文件加载 Cookie 到浏览器实例
+   * @param {string} profileId 配置文件 ID
+   * @param {string} url 网站 URL
+   * @returns {Promise<boolean>} 是否成功
+   */
+  async loadCookiesFromProfile(profileId, url) {
+    try {
+      console.log(`尝试从配置文件加载 Cookie, 配置文件 ID: ${profileId}, URL: ${url}`);
+      
+      // 获取配置文件
+      const profileManager = require('./profile-manager');
+      const profile = profileManager.getProfileById(profileId);
+      
+      if (!profile) {
+        console.log(`找不到配置文件 ID: ${profileId}`);
+        return false;
+      }
+      
+      // 检查是否有 Cookie 数据
+      if (!profile.cookies || !Array.isArray(profile.cookies) || profile.cookies.length === 0) {
+        console.log('配置文件中没有 Cookie 数据');
+        return true; // 没有数据也算成功
+      }
+      
+      // 提取当前域名
+      const urlObj = new URL(url);
+      const domain = urlObj.hostname;
+      
+      // 查找当前域名的 Cookie 记录
+      const domainCookie = profile.cookies.find(c => c.domain === domain);
+      
+      if (!domainCookie || !domainCookie.cookies || domainCookie.cookies.length === 0) {
+        console.log(`配置文件中没有域名 ${domain} 的 Cookie 数据`);
+        return true; // 没有数据也算成功
+      }
+      
+      console.log(`从配置文件中加载了 ${domainCookie.cookies.length} 个 Cookie`);
+      
+      // 连接到浏览器实例
+      const browser = await this.connectToBrowser(profileId);
+      
+      if (!browser) {
+        console.error('无法连接到浏览器实例');
+        return false;
+      }
+      
+      // 获取浏览器上下文
+      let context = null;
+      
+      // 检查浏览器实例是否自身就是上下文
+      if (typeof browser.cookies === 'function' && typeof browser.addCookies === 'function') {
+        console.log('浏览器实例本身就是上下文，直接使用');
+        context = browser;
+      }
+      // 兼容不同的浏览器 API
+      else if (browser.contexts && typeof browser.contexts === 'function') {
+        const contexts = browser.contexts();
+        if (contexts && contexts.length > 0) {
+          context = contexts[0];
+          console.log('使用 browser.contexts()[0] 获取上下文');
+        }
+      } else if (browser.context && typeof browser.context === 'function') {
+        context = browser.context();
+        console.log('使用 browser.context() 获取上下文');
+      } else if (browser.defaultBrowserContext && typeof browser.defaultBrowserContext === 'function') {
+        context = browser.defaultBrowserContext();
+        console.log('使用 browser.defaultBrowserContext() 获取上下文');
+      } else if (browser._browserContexts && browser._browserContexts.length > 0) {
+        context = browser._browserContexts[0];
+        console.log('使用 browser._browserContexts[0] 获取上下文');
+      }
+      
+      // 如果仍然无法获取上下文，尝试将浏览器实例本身作为上下文
+      if (!context) {
+        console.log('无法获取浏览器上下文，将浏览器实例作为上下文');
+        context = browser;
+      }
+      
+      // 转换 Cookie 格式并设置
+      let successCount = 0;
+      let failureCount = 0;
+      
+      for (const cookie of domainCookie.cookies) {
+        try {
+          // 转换为 Playwright 格式
+          const playwrightCookie = {
+            name: cookie.name,
+            value: cookie.value,
+            domain: cookie.domain || domain,
+            path: cookie.path || '/',
+            expires: cookie.expires,
+            httpOnly: cookie.httpOnly,
+            secure: cookie.secure,
+            sameSite: cookie.sameSite
+          };
+          
+          // 设置 Cookie
+          await context.addCookies([playwrightCookie]);
+          successCount++;
+        } catch (error) {
+          console.error(`设置 Cookie ${cookie.name} 失败:`, error);
+          failureCount++;
+        }
+      }
+      
+      console.log(`成功设置 ${successCount} 个 Cookie，失败 ${failureCount} 个`);
+      
+      return successCount > 0 || domainCookie.cookies.length === 0;
+    } catch (error) {
+      console.error('从配置文件加载 Cookie 失败:', error);
       return false;
     }
   }

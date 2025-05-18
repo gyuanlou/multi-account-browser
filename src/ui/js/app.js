@@ -11,14 +11,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.INSTANCE_STATUS = constants;
   });
   
+  // 预先定义默认的浏览器实例状态常量
+  window.INSTANCE_STATUS = {
+    STARTING: 'starting',  // 正在启动
+    RUNNING: 'running',    // 正在运行
+    CLOSING: 'closing',    // 正在关闭
+    CLOSED: 'closed',      // 已关闭
+    ERROR: 'error'         // 出错
+  };
+  
   // 从后端获取浏览器实例状态常量
   try {
     const constants = await window.ipcRenderer.invoke('get-instance-status-constants');
     console.log('从后端获取状态常量:', constants);
     // 将后端状态常量同步到前端
-    window.INSTANCE_STATUS = constants;
+    if (constants) {
+      window.INSTANCE_STATUS = constants;
+    }
   } catch (error) {
     console.error('获取状态常量失败:', error);
+    console.log('使用默认状态常量');
   }
   
   // 注册所有组件

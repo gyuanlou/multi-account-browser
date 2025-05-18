@@ -712,25 +712,40 @@ const CookieManagerPage = {
           // 等待一下，确保浏览器实例完全启动
           await new Promise(resolve => setTimeout(resolve, 2000));
           
-          // 如果是存储项，从配置文件加载到浏览器实例
-          if (this.storageType !== 'cookies') {
-            try {
+          // 从配置文件加载数据到浏览器实例
+          try {
+            if (this.storageType === 'cookies') {
+              // 加载 Cookie
+              console.log('尝试从配置文件加载 Cookie 到浏览器实例...');
+              const loadCookieResult = await window.ipcRenderer.invoke(
+                'load-cookies-from-profile',
+                this.selectedProfileId,
+                this.url
+              );
+              
+              if (loadCookieResult === true) {
+                console.log('从配置文件加载 Cookie 成功');
+              } else {
+                console.warn('从配置文件加载 Cookie 失败');
+              }
+            } else {
+              // 加载存储项
               console.log('尝试从配置文件加载存储项到浏览器实例...');
-              const loadResult = await window.ipcRenderer.invoke(
+              const loadStorageResult = await window.ipcRenderer.invoke(
                 'load-storage-from-profile',
                 this.selectedProfileId,
                 this.url,
                 this.storageType === 'localStorage' ? 'localStorage' : 'sessionStorage'
               );
               
-              if (loadResult === true) {
+              if (loadStorageResult === true) {
                 console.log('从配置文件加载存储项成功');
               } else {
                 console.warn('从配置文件加载存储项失败');
               }
-            } catch (loadError) {
-              console.error('从配置文件加载存储项失败:', loadError);
             }
+          } catch (loadError) {
+            console.error('从配置文件加载数据失败:', loadError);
           }
         } catch (launchError) {
           console.error('启动浏览器实例失败:', launchError);

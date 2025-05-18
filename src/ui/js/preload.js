@@ -54,6 +54,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
       
       // 浏览器实例管理
       'get-running-instances',
+      'get-instance-status-constants',
       'launch-browser',
       'close-browser',
       'open-dev-tools',

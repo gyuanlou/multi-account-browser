@@ -1138,6 +1138,21 @@ function registerIPCHandlers() {
       console.warn('处理程序 load-storage-from-profile 已存在，跳过注册');
     }
     
+    // 注册 load-cookies-from-profile 处理器
+    if (!ipcMain.listenerCount('load-cookies-from-profile')) {
+      ipcMain.handle('load-cookies-from-profile', async (event, profileId, url) => {
+        try {
+          return await cookieManager.loadCookiesFromProfile(profileId, url);
+        } catch (error) {
+          console.error('从配置文件加载 Cookie 失败:', error);
+          return false;
+        }
+      });
+      console.log('注册 load-cookies-from-profile 处理器成功');
+    } else {
+      console.warn('处理程序 load-cookies-from-profile 已存在，跳过注册');
+    }
+    
     // delete-cookie 处理器已在前面注册，这里不再重复注册
   }
   

@@ -36,8 +36,6 @@ class SafariAdapter extends BrowserAdapter {
    */
   cleanupUserData(userDataDir) {
     try {
-      // 如果需要清理特定文件，可以在这里实现
-      console.log(`清理 Safari 用户数据目录: ${userDataDir}`);
       return true;
     } catch (error) {
       console.error(`清理 Safari 用户数据目录失败: ${error.message}`);
@@ -73,11 +71,9 @@ class SafariAdapter extends BrowserAdapter {
       try {
         // 使用系统下载目录作为默认下载路径
         downloadPath = app.getPath('downloads');
-        console.log(`使用系统下载目录: ${downloadPath}`);
       } catch (error) {
         // 如果无法获取系统下载目录，使用用户数据目录下的 Downloads 文件夹
         downloadPath = path.join(userDataDir, 'Downloads');
-        console.log(`使用自定义下载目录: ${downloadPath}`);
         
         // 确保下载目录存在
         if (!fs.existsSync(downloadPath)) {
@@ -134,11 +130,8 @@ class SafariAdapter extends BrowserAdapter {
             const suggestedFilename = await download.suggestedFilename();
             const savePath = path.join(downloadPath, suggestedFilename);
             
-            console.log(`文件正在下载到: ${savePath}`);
-            
             // 使用 Playwright 的 saveAs 方法指定文件名和保存路径
             await download.saveAs(savePath);
-            console.log(`文件已保存到: ${savePath}`);
             
             // 添加延时，确保文件完全保存
             await new Promise(resolve => setTimeout(resolve, 500));
@@ -179,7 +172,7 @@ class SafariAdapter extends BrowserAdapter {
                 // 添加消息监听器，接收来自主进程的响应
                 window.addEventListener('message', (event) => {
                   if (event.data && event.data.type === 'FOLDER_OPENED') {
-                    console.log('文件夹已打开:', event.data.path);
+                    // 文件夹已打开
                   }
                 });
               }, 1000);
@@ -198,7 +191,6 @@ class SafariAdapter extends BrowserAdapter {
       
       // 导航到指定 URL
       const targetUrl = options.url || options.startUrl;
-      console.log(`将 Safari 页面导航到: ${targetUrl}`);
       await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
     }
     
@@ -457,8 +449,6 @@ class SafariAdapter extends BrowserAdapter {
     const url = testUrl || 'https://api.ipify.org?format=json';
     
     try {
-      console.log(`开始测试代理: ${type}://${host}:${port}`);
-      
       // 创建一个临时浏览器实例来测试代理
       const launchOptions = {
         headless: true,
@@ -626,7 +616,6 @@ class SafariAdapter extends BrowserAdapter {
         };
         
         deleteFolderRecursive(cachePath);
-        console.log(`已清理 Safari 缓存目录: ${cachePath}`);
         return true;
       } catch (error) {
         console.error(`清理 Safari 缓存失败: ${error.message}`);
