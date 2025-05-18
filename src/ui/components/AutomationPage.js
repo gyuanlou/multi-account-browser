@@ -157,7 +157,7 @@ const AutomationPage = {
               :rows="8">
             </el-input>
             <div class="setting-description">
-              脚本将在浏览器中执行，可以使用 Puppeteer API 进行自动化操作
+              脚本将在浏览器中执行，可以使用 Playwright API 进行自动化操作
             </div>
           </el-form-item>
           

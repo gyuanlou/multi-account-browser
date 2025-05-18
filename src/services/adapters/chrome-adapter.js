@@ -122,6 +122,28 @@ class ChromeAdapter extends BrowserAdapter {
    * @returns {Object} 启动参数对象
    */
   buildLaunchArgs(profile, userDataDir, debugPort, options = {}) {
+    // 获取 electron app 对象
+    const { app } = require('electron');
+    
+    // 确定下载路径
+    let downloadPath = profile.downloadPath;
+    if (!downloadPath) {
+      try {
+        // 使用系统下载目录作为默认下载路径
+        downloadPath = app.getPath('downloads');
+        console.log(`使用系统下载目录: ${downloadPath}`);
+      } catch (error) {
+        // 如果无法获取系统下载目录，使用用户数据目录下的 Downloads 文件夹
+        downloadPath = path.join(userDataDir, 'Downloads');
+        console.log(`使用自定义下载目录: ${downloadPath}`);
+        
+        // 确保下载目录存在
+        if (!fs.existsSync(downloadPath)) {
+          fs.mkdirSync(downloadPath, { recursive: true });
+        }
+      }
+    }
+    
     // 构建 Playwright 的 Chrome 启动选项
     const launchOptions = {
       headless: false,
@@ -148,7 +170,10 @@ class ChromeAdapter extends BrowserAdapter {
         '--disable-prompt-on-repost',
         '--disable-renderer-backgrounding',
         '--force-color-profile=srgb',
-        '--metrics-recording-only'
+        '--metrics-recording-only',
+        `--download-default-directory=${downloadPath}`,
+        '--enable-local-file-accesses',
+        '--allow-file-access-from-files'
       ]
     };
     
@@ -222,11 +247,104 @@ class ChromeAdapter extends BrowserAdapter {
   async launchBrowser(executablePath, launchArgs, options = {}) {
     const { userDataDir, launchOptions } = launchArgs;
     
+    // 获取预加载脚本路径
+    const preloadPath = path.join(process.cwd(), 'src', 'preload', 'download-handler.js');
+    console.log(`预加载脚本路径: ${preloadPath}`);
+    
+    // 确保预加载脚本存在
+    if (!fs.existsSync(preloadPath)) {
+      console.warn(`预加载脚本不存在: ${preloadPath}`);
+    }
+    
+    // 获取下载路径
+    const downloadPathArg = launchOptions.args.find(arg => arg.startsWith('--download-default-directory='));
+    let downloadPath = '';
+    if (downloadPathArg) {
+      downloadPath = downloadPathArg.split('=')[1];
+      console.log(`设置 Playwright 下载路径: ${downloadPath}`);
+    }
+    
     // 使用 Playwright 启动 Chrome
     const context = await chromium.launchPersistentContext(userDataDir, {
       ...launchOptions,
-      executablePath: executablePath || this.getBrowserPath()
+      executablePath: executablePath || this.getBrowserPath(),
+      acceptDownloads: true, // 允许下载文件
+      downloadsPath: downloadPath, // 直接设置 Playwright 的下载路径
+      args: [
+        ...launchOptions.args,
+        `--preload-script=${preloadPath}` // 添加预加载脚本
+      ]
     });
+    
+    // 设置下载行为
+    const pages = context.pages();
+    if (pages.length > 0) {
+      const page = pages[0];
+      
+      // 监听下载事件
+      page.on('download', async download => {
+        try {
+          const downloadPath = launchOptions.args.find(arg => arg.startsWith('--download-default-directory='));
+          if (downloadPath) {
+            const downloadDir = downloadPath.split('=')[1];
+            const suggestedFilename = await download.suggestedFilename();
+            const savePath = path.join(downloadDir, suggestedFilename);
+            
+            console.log(`文件正在下载到: ${savePath}`);
+            
+            // 使用 Playwright 的 saveAs 方法指定文件名和保存路径
+            await download.saveAs(savePath);
+            console.log(`文件已保存到: ${savePath}`);
+            
+            // 添加延时，确保文件完全保存
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // 注入脚本以修改下载项的打开文件夹功能
+            await page.evaluate((downloadDir) => {
+            // 等待下载管理器页面加载完成
+            setTimeout(() => {
+              // 查找所有「打开文件夹」按钮并修改其行为
+              const observer = new MutationObserver((mutations) => {
+                const buttons = document.querySelectorAll('cr-icon-button[title="打开文件夹"], cr-icon-button[title="Open folder"], cr-icon-button[aria-label="打开文件夹"], cr-icon-button[aria-label="Open folder"]');
+                
+                buttons.forEach(button => {
+                  if (!button.hasAttribute('data-modified')) {
+                    button.setAttribute('data-modified', 'true');
+                    
+                    // 替换原有的点击事件
+                    button.addEventListener('click', (event) => {
+                      event.stopPropagation();
+                      event.preventDefault();
+                      
+                      // 使用自定义消息通知主进程打开文件夹
+                      window.postMessage({
+                        type: 'OPEN_DOWNLOAD_FOLDER',
+                        path: downloadDir
+                      }, '*');
+                      
+                      return false;
+                    }, true);
+                  }
+                });
+              });
+              
+              // 开始观察 DOM 变化
+              observer.observe(document.body, { childList: true, subtree: true });
+              
+              // 添加消息监听器，接收来自主进程的响应
+              window.addEventListener('message', (event) => {
+                if (event.data && event.data.type === 'FOLDER_OPENED') {
+                  console.log('文件夹已打开:', event.data.path);
+                }
+              });
+            }, 1000);
+          }, downloadDir);
+        }
+        } catch (error) {
+          console.error(`下载处理出错: ${error.message}`);
+        }
+      });
+    }
     
     // 如果有起始 URL，打开该页面
     if (options.url || options.startUrl) {

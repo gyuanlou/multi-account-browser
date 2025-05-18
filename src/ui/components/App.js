@@ -98,6 +98,13 @@ const App = {
       this.appInfo = info;
     });
     
+    // 监听浏览器实例状态变化事件
+    window.ipcRenderer.on('instance-status-changed', async (event, data) => {
+      console.log('实例状态变化:', data);
+      // 立即刷新实例列表
+      this.refreshRunningInstances();
+    });
+    
     // 监听导入配置就绪事件
     window.ipcRenderer.on('import-profile-ready', async () => {
       try {
@@ -331,7 +338,27 @@ const App = {
     // 刷新运行中的实例
     async refreshRunningInstances() {
       try {
+        console.log('开始刷新运行实例列表...');
         const instances = await window.ipcRenderer.invoke('get-running-instances');
+        console.log('获取到运行实例列表:', JSON.stringify(instances, null, 2));
+        
+        // 检查全局状态常量
+        console.log('当前全局状态常量:', JSON.stringify(window.INSTANCE_STATUS, null, 2));
+        
+        // 检查实例状态
+        if (instances && instances.length > 0) {
+          instances.forEach(instance => {
+            console.log(`实例 ${instance.profileId} 状态:`, instance.status);
+            console.log(`是否在运行:`, instance.status === window.INSTANCE_STATUS.RUNNING);
+            console.log(`实例详情:`, JSON.stringify({
+              profileId: instance.profileId,
+              status: instance.status,
+              browserType: instance.browserType,
+              startTime: instance.startTime
+            }, null, 2));
+          });
+        }
+        
         this.runningInstances = instances;
       } catch (error) {
         console.error('获取运行实例失败:', error);

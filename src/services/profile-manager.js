@@ -75,7 +75,34 @@ class ProfileManager {
    * @returns {Array} 配置文件列表
    */
   getAllProfiles() {
-    return this.store.get('profiles') || [];
+    try {
+      console.log('获取所有配置文件...');
+      
+      // 检查存储是否初始化
+      if (!this.store) {
+        console.error('存储对象未初始化');
+        return [];
+      }
+      
+      // 获取配置文件
+      const profiles = this.store.get('profiles');
+      
+      if (!profiles) {
+        console.log('没有找到配置文件，返回空数组');
+        return [];
+      }
+      
+      if (!Array.isArray(profiles)) {
+        console.error('配置文件格式错误，应为数组，实际为:', typeof profiles);
+        return [];
+      }
+      
+      console.log(`找到 ${profiles.length} 个配置文件`);
+      return profiles;
+    } catch (error) {
+      console.error('获取配置文件时出错:', error);
+      return [];
+    }
   }
   
   /**

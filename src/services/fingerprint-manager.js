@@ -347,7 +347,7 @@ class FingerprintManager {
     // 注入指纹脚本
     await client.send('Page.addScriptToEvaluateOnNewDocument', {
       source: this.createFingerprintInjectionScript(fingerprint)
-    });
+    }); 
   }
   
   /**

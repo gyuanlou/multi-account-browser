@@ -105,7 +105,21 @@ const ProfileList = {
   methods: {
     // 判断配置文件是否有运行中的实例
     isProfileRunning(profileId) {
-      return this.runningInstances.some(instance => instance.profileId === profileId && instance.status === 'running');
+      // 打印运行中的实例状态信息，帮助调试
+      if (this.runningInstances && this.runningInstances.length > 0) {
+        console.log('当前运行实例列表:', JSON.stringify(this.runningInstances));
+        const instance = this.runningInstances.find(instance => instance.profileId === profileId);
+        if (instance) {
+          console.log(`配置 ${profileId} 的实例状态:`, instance.status);
+          console.log(`全局常量 RUNNING 值:`, window.INSTANCE_STATUS.RUNNING);
+          console.log(`状态比较结果:`, instance.status === window.INSTANCE_STATUS.RUNNING);
+        }
+      }
+      
+      return this.runningInstances.some(instance => 
+        instance.profileId === profileId && 
+        instance.status === window.INSTANCE_STATUS.RUNNING
+      );
     },
     
     selectProfile(profileId) {

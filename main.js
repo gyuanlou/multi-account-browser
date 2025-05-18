@@ -75,6 +75,12 @@ function createMainWindow() {
   // 加载主界面
   mainWindow.loadFile('src/ui/index.html');
 
+  // 窗口加载完成后发送状态常量
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log('发送浏览器实例状态常量到渲染进程');
+    mainWindow.webContents.send('instance-status-constants', browserManager.INSTANCE_STATUS);
+  });
+
   // 开发环境打开开发者工具
   // 始终打开开发者工具，方便调试
   mainWindow.webContents.openDevTools();
@@ -246,6 +252,28 @@ app.on('window-all-closed', () => {
 
 // 注册所有IPC处理程序
 function registerIPCHandlers() {
+  // 处理打开下载文件夹的请求
+  ipcMain.handle('open-folder', async (event, folderPath) => {
+    try {
+      console.log(`请求打开文件夹: ${folderPath}`);
+      
+      // 确保文件夹存在
+      if (!fs.existsSync(folderPath)) {
+        console.error(`文件夹不存在: ${folderPath}`);
+        return { success: false, error: '文件夹不存在' };
+      }
+      
+      // 使用 Electron 的 shell 模块打开文件夹
+      const { shell } = require('electron');
+      await shell.openPath(folderPath);
+      
+      console.log(`已打开文件夹: ${folderPath}`);
+      return { success: true, path: folderPath };
+    } catch (error) {
+      console.error(`打开文件夹失败: ${error.message}`);
+      return { success: false, error: error.message };
+    }
+  });
   // 配置文件管理
   ipcMain.handle('get-profiles', () => {
     return profileManager.getAllProfiles();
@@ -287,6 +315,11 @@ function registerIPCHandlers() {
 
   ipcMain.handle('get-running-instances', () => {
     return browserManager.getRunningInstances();
+  });
+  
+  // 获取浏览器实例状态常量
+  ipcMain.handle('get-instance-status-constants', () => {
+    return browserManager.INSTANCE_STATUS;
   });
   
   // 浏览器工厂相关
@@ -1076,17 +1109,33 @@ function registerIPCHandlers() {
     }
     
     // 注册 clear-local-storage 处理器
-    try {
+    if (!ipcMain.listenerCount('clear-local-storage')) {
       ipcMain.handle('clear-local-storage', async (event, profileId, url, storageType = 'localStorage') => {
         try {
           return await cookieManager.clearLocalStorage(profileId, url, storageType);
         } catch (error) {
-          throw new Error(`清除本地存储失败: ${error.message}`);
+          console.error('清除本地存储失败:', error);
+          return false;
         }
       });
       console.log('注册 clear-local-storage 处理器成功');
-    } catch (error) {
+    } else {
       console.warn('处理程序 clear-local-storage 已存在，跳过注册');
+    }
+    
+    // 注册 load-storage-from-profile 处理器
+    if (!ipcMain.listenerCount('load-storage-from-profile')) {
+      ipcMain.handle('load-storage-from-profile', async (event, profileId, url, storageType = 'localStorage') => {
+        try {
+          return await cookieManager.loadStorageFromProfile(profileId, url, storageType);
+        } catch (error) {
+          console.error('从配置文件加载存储项失败:', error);
+          return false;
+        }
+      });
+      console.log('注册 load-storage-from-profile 处理器成功');
+    } else {
+      console.warn('处理程序 load-storage-from-profile 已存在，跳过注册');
     }
     
     // delete-cookie 处理器已在前面注册，这里不再重复注册

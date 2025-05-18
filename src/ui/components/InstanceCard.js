@@ -45,12 +45,16 @@ const InstanceCard = {
   computed: {
     statusType() {
       switch (this.instance.status) {
-        case 'running':
+        case window.INSTANCE_STATUS.RUNNING:
           return 'success';
-        case 'starting':
+        case window.INSTANCE_STATUS.STARTING:
           return 'warning';
-        case 'closed':
+        case window.INSTANCE_STATUS.CLOSED:
           return 'danger';
+        case window.INSTANCE_STATUS.ERROR:
+          return 'danger';
+        case window.INSTANCE_STATUS.CLOSING:
+          return 'warning';
         default:
           return 'info';
       }
@@ -58,14 +62,18 @@ const InstanceCard = {
     
     statusText() {
       switch (this.instance.status) {
-        case 'running':
+        case window.INSTANCE_STATUS.RUNNING:
           return '运行中';
-        case 'starting':
+        case window.INSTANCE_STATUS.STARTING:
           return '启动中';
-        case 'closed':
+        case window.INSTANCE_STATUS.CLOSING:
+          return '关闭中';
+        case window.INSTANCE_STATUS.CLOSED:
           return '已关闭';
+        case window.INSTANCE_STATUS.ERROR:
+          return '错误';
         default:
-          return '未知';
+          return '未知状态';
       }
     }
   },

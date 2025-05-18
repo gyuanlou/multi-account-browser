@@ -542,77 +542,110 @@ class EnhancedFingerprintManager {
    * @returns {Promise<Object>} 测试结果
    */
   async testFingerprintProtection(browser) {
-    try {
-      // 获取浏览器页面 - 在 Playwright 中使用 context.pages()
+          // 获取浏览器页面 - 在 Playwright 中使用 context.pages()
       console.log('获取浏览器页面...');
       
-      // 首先确定是否有 context
-      let pages = [];
-      if (browser.contexts && browser.contexts().length > 0) {
-        // 如果是 browser 对象，获取第一个 context 的页面
-        const context = browser.contexts()[0];
-        pages = await context.pages();
-      } else {
-        // 如果是 context 对象
-        pages = await browser.pages();
+      if (!browser) {
+        throw new Error('测试指纹防护失败: 浏览器实例不存在');
       }
       
-      const page = pages.length > 0 ? pages[0] : await browser.newPage();
+      // 检查是否有上下文
+      let context;
+      if (browser.contexts && typeof browser.contexts === 'function') {
+        const contexts = browser.contexts();
+        if (contexts && contexts.length > 0) {
+          context = contexts[0];
+        } else {
+          throw new Error('测试指纹防护失败: 没有可用的浏览器上下文');
+        }
+      } else if (browser.context && typeof browser.context === 'function') {
+        // 如果是单个上下文的 API
+        context = browser.context();
+      } else if (browser.defaultBrowserContext && typeof browser.defaultBrowserContext === 'function') {
+        // 兼容其他可能的 API
+        context = browser.defaultBrowserContext();
+      } else {
+        // 如果浏览器实例本身就是上下文
+        context = browser;
+      }
+      
+      // 获取页面
+      let page;
+      try {
+        const pages = await context.pages();
+        if (pages && pages.length > 0) {
+          page = pages[0];
+          console.log('使用现有页面进行测试');
+        } else {
+          console.log('创建新页面进行测试');
+          page = await context.newPage();
+        }
+      } catch (error) {
+        console.error('获取页面失败:', error);
+        throw new Error(`测试指纹防护失败: 无法获取或创建页面 - ${error.message}`);
+      }
+      
+      if (!page) {
+        throw new Error('测试指纹防护失败: 无法获取或创建页面');
+      }
       
       // 创建一个本地测试页面
       console.log('创建本地测试页面...');
-      await page.setContent(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>指纹防护测试</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            .result { margin: 10px 0; padding: 10px; border: 1px solid #ddd; }
-            .passed { color: green; }
-            .failed { color: red; }
-          </style>
-        </head>
-        <body>
-          <h1>指纹防护测试</h1>
-          <div id="results"></div>
-          
-          <script>
-            // 运行多次测试以检查一致性
-            const TEST_RUNS = 3;
+      
+      try {
+        // 设置测试页面内容
+        await page.setContent(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>指纹防护测试</title>
+            <style>
+              body { font-family: Arial, sans-serif; margin: 20px; }
+              .result { margin: 10px 0; padding: 10px; border: 1px solid #ddd; }
+              .passed { color: green; }
+              .failed { color: red; }
+            </style>
+          </head>
+          <body>
+            <h1>指纹防护测试</h1>
+            <div id="results"></div>
             
-            // Canvas 指纹测试
-            function testCanvas() {
-              const fingerprints = [];
+            <script>
+              // 运行多次测试以检查一致性
+              const TEST_RUNS = 3;
               
-              for (let i = 0; i < TEST_RUNS; i++) {
-                const canvas = document.createElement('canvas');
-                canvas.width = 200;
-                canvas.height = 50;
-                const ctx = canvas.getContext('2d');
+              // Canvas 指纹测试
+              function testCanvas() {
+                const fingerprints = [];
                 
-                ctx.textBaseline = "top";
-                ctx.font = "14px 'Arial'";
-                ctx.textBaseline = "alphabetic";
-                ctx.fillStyle = "#f60";
-                ctx.fillRect(125, 1, 62, 20);
-                ctx.fillStyle = "#069";
-                ctx.fillText("Hello, world!", 2, 15);
-                ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
-                ctx.fillText("Hello, world!", 4, 17);
+                for (let i = 0; i < TEST_RUNS; i++) {
+                  const canvas = document.createElement('canvas');
+                  canvas.width = 200;
+                  canvas.height = 50;
+                  const ctx = canvas.getContext('2d');
+                  
+                  ctx.textBaseline = "top";
+                  ctx.font = "14px 'Arial'";
+                  ctx.textBaseline = "alphabetic";
+                  ctx.fillStyle = "#f60";
+                  ctx.fillRect(125, 1, 62, 20);
+                  ctx.fillStyle = "#069";
+                  ctx.fillText("Hello, world!", 2, 15);
+                  ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
+                  ctx.fillText("Hello, world!", 4, 17);
+                  
+                  fingerprints.push(canvas.toDataURL());
+                }
                 
-                fingerprints.push(canvas.toDataURL());
+                // 检查是否所有指纹都相同
+                const allSame = fingerprints.every(fp => fp === fingerprints[0]);
+                
+                return {
+                  fingerprints: fingerprints,
+                  protected: !allSame, // 如果每次生成的指纹都不同，则表示有保护
+                  details: allSame ? '每次生成的Canvas指纹相同，没有保护' : '每次生成的Canvas指纹不同，有保护'
+                };
               }
-              
-              // 检查是否所有指纹都相同
-              const allSame = fingerprints.every(fp => fp === fingerprints[0]);
-              
-              return {
-                fingerprints: fingerprints,
-                protected: !allSame, // 如果每次生成的指纹都不同，则表示有保护
-                details: allSame ? '每次生成的Canvas指纹相同，没有保护' : '每次生成的Canvas指纹不同，有保护'
-              };
-            }
             
             // WebGL 指纹测试
             function testWebGL() {
@@ -933,57 +966,57 @@ class EnhancedFingerprintManager {
           </script>
         </body>
         </html>
-      `);
+        `);
       
-      // 等待脚本执行完成
-      console.log('等待脚本执行完成...');
-      await page.waitForFunction('window.fingerprintTestResults !== undefined', { timeout: 10000 });
-      
-      // 获取测试结果
-      console.log('获取测试结果...');
-      const testResults = await page.evaluate(() => window.fingerprintTestResults);
-      
-      // 生成最终结果
-      console.log('生成最终结果...');
-      return {
-        success: true,
-        canvas: {
-          protected: testResults.canvas.protected,
-          details: testResults.canvas.details
-        },
-        webrtc: {
-          protected: testResults.webrtc.protected,
-          details: testResults.webrtc.details
-        },
-        fonts: {
-          protected: testResults.fonts.protected,
-          details: testResults.fonts.details
-        },
-        hardware: {
-          protected: testResults.hardware.protected,
-          details: testResults.hardware.details
-        },
-        audio: {
-          protected: testResults.audio.protected,
-          details: testResults.audio.details
-        },
-        plugins: {
-          protected: testResults.plugins.protected,
-          details: testResults.plugins.details
-        },
-        timezone: {
-          protected: testResults.timezone.protected,
-          details: testResults.timezone.details
-        }
-      };
-    } catch (error) {
-      console.error('测试指纹防护效果失败:', error);
-      return {
-        success: false,
-        error: error.message
-      };
-    }
+        // 等待脚本执行完成
+        console.log('等待脚本执行完成...');
+        await page.waitForFunction('window.fingerprintTestResults !== undefined', { timeout: 10000 });
+        
+        // 获取测试结果
+        console.log('获取测试结果...');
+        const testResults = await page.evaluate(() => window.fingerprintTestResults);
+        
+        // 生成最终结果
+        console.log('生成最终结果...');
+        return {
+          success: true,
+          canvas: {
+            protected: testResults.canvas.protected,
+            details: testResults.canvas.details
+          },
+          webrtc: {
+            protected: testResults.webrtc.protected,
+            details: testResults.webrtc.details
+          },
+          fonts: {
+            protected: testResults.fonts.protected,
+            details: testResults.fonts.details
+          },
+          hardware: {
+            protected: testResults.hardware.protected,
+            details: testResults.hardware.details
+          },
+          audio: {
+            protected: testResults.audio.protected,
+            details: testResults.audio.details
+          },
+          plugins: {
+            protected: testResults.plugins.protected,
+            details: testResults.plugins.details
+          },
+          timezone: {
+            protected: testResults.timezone.protected,
+            details: testResults.timezone.details
+          }
+        };
+
+      } catch (error) {
+        console.error('测试指纹防护效果失败:', error);
+        return {
+          success: false,
+          error: error.message
+        };
+      }
   }
 }
-
 module.exports = new EnhancedFingerprintManager();

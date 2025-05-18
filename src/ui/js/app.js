@@ -1,8 +1,25 @@
 // app.js - 主应用脚本
 console.log('开始初始化 Vue 应用...');
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   console.log('DOM 内容已加载，初始化 Vue 应用...');
+  
+  // 监听来自主进程的状态常量事件
+  window.ipcRenderer.on('instance-status-constants', (event, constants) => {
+    console.log('收到浏览器实例状态常量:', constants);
+    // 将后端状态常量同步到前端
+    window.INSTANCE_STATUS = constants;
+  });
+  
+  // 从后端获取浏览器实例状态常量
+  try {
+    const constants = await window.ipcRenderer.invoke('get-instance-status-constants');
+    console.log('从后端获取状态常量:', constants);
+    // 将后端状态常量同步到前端
+    window.INSTANCE_STATUS = constants;
+  } catch (error) {
+    console.error('获取状态常量失败:', error);
+  }
   
   // 注册所有组件
   const app = Vue.createApp({

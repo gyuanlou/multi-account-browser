@@ -1,4 +1,4 @@
-// CookieManagerPage.js - Cookie 和本地存储管理页面
+// CookieManagerPage.js - Cookie 管理页面组件
 const CookieManagerPage = {
   template: `
     <div class="cookie-manager-page">
@@ -26,7 +26,9 @@ const CookieManagerPage = {
             clearable>
             <template #prepend>URL</template>
             <template #append>
-              <el-button @click="loadCookies">加载</el-button>
+              <el-button type="primary" @click="loadCookies" :disabled="!selectedProfileId || !url">
+                 加载 Cookie
+              </el-button>
             </template>
           </el-input>
         </div>
@@ -42,12 +44,6 @@ const CookieManagerPage = {
       
       <div class="cookie-manager-actions">
         <div class="cookie-actions">
-          <el-button type="primary" @click="loadCookies" :disabled="!selectedProfileId || !url">
-            <i class="el-icon-refresh"></i> 加载 Cookie
-          </el-button>
-          <el-button type="success" @click="showAddCookieDialog" :disabled="!selectedProfileId || !url">
-            <i class="el-icon-plus"></i> 添加 Cookie
-          </el-button>
           <el-button type="danger" @click="deleteAllDomainCookies" :disabled="!selectedProfileId || !url || cookies.length === 0">
             <i class="el-icon-delete"></i> 删除所有 Cookie
           </el-button>
@@ -55,10 +51,12 @@ const CookieManagerPage = {
         <el-button-group>
           <el-button type="primary" @click="refreshData">
             <i class="el-icon-refresh"></i> 刷新
+          </el-button>          
+
+          <el-button type="success" @click="addItem" :disabled="!selectedProfileId || !url">
+            <i class="el-icon-plus"></i> 添加 Cookie
           </el-button>
-          <el-button @click="addItem">
-            <i class="el-icon-plus"></i> 添加
-          </el-button>
+
           <el-button type="danger" @click="clearAll" :disabled="!hasData">
             <i class="el-icon-delete"></i> 清除全部
           </el-button>
@@ -427,39 +425,7 @@ const CookieManagerPage = {
       }
     },
     
-    showAddCookieDialog() {
-      if (!this.selectedProfileId) {
-        this.$message.warning('请先选择配置文件');
-        return;
-      }
-      
-      if (!this.url) {
-        this.$message.warning('请先输入网站 URL');
-        return;
-      }
-      
-      // 重置当前 Cookie 数据
-      this.currentCookie = {
-        name: '',
-        value: '',
-        domain: this.extractDomain(this.url),
-        path: '/',
-        expires: null,
-        session: false,
-        httpOnly: false,
-        secure: false,
-        sameSite: 'None'
-      };
-      
-      // 重置过期时间
-      this.expiryDate = null;
-      
-      // 设置为非编辑模式
-      this.isEditMode = false;
-      
-      // 显示对话框
-      this.cookieDialogVisible = true;
-    },
+    // showAddCookieDialog 方法已合并到 addItem 方法中
     // 直接编辑 Cookie 的方法
     directEditCookie(cookie) {
       console.log('直接编辑 Cookie:', cookie);
@@ -575,7 +541,10 @@ const CookieManagerPage = {
         try {
           // 先检查浏览器实例是否存在
           const runningInstances = await window.ipcRenderer.invoke('get-running-instances');
-          const profileRunning = runningInstances.some(instance => instance.profileId === this.selectedProfileId);
+          const profileRunning = runningInstances.some(instance => 
+            instance.profileId === this.selectedProfileId && 
+            instance.status === window.INSTANCE_STATUS.RUNNING
+          );
           
           if (!profileRunning) {
             // 如果浏览器实例未启动，自动启动它
@@ -726,7 +695,10 @@ const CookieManagerPage = {
     // 先检查浏览器实例是否存在
     try {
       const runningInstances = await window.ipcRenderer.invoke('get-running-instances');
-      const profileRunning = runningInstances.some(instance => instance.profileId === this.selectedProfileId);
+      const profileRunning = runningInstances.some(instance => 
+        instance.profileId === this.selectedProfileId && 
+        instance.status === window.INSTANCE_STATUS.RUNNING
+      );
       
       if (!profileRunning) {
         // 如果浏览器实例未启动，自动启动它
@@ -735,10 +707,31 @@ const CookieManagerPage = {
         try {
           // 启动浏览器实例
           await window.ipcRenderer.invoke('launch-browser', this.selectedProfileId);
-          this.$message.success(`浏览器实例启动成功，正在加载 Cookie...`);
+          this.$message.success(`浏览器实例启动成功，正在加载数据...`);
           
           // 等待一下，确保浏览器实例完全启动
           await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // 如果是存储项，从配置文件加载到浏览器实例
+          if (this.storageType !== 'cookies') {
+            try {
+              console.log('尝试从配置文件加载存储项到浏览器实例...');
+              const loadResult = await window.ipcRenderer.invoke(
+                'load-storage-from-profile',
+                this.selectedProfileId,
+                this.url,
+                this.storageType === 'localStorage' ? 'localStorage' : 'sessionStorage'
+              );
+              
+              if (loadResult === true) {
+                console.log('从配置文件加载存储项成功');
+              } else {
+                console.warn('从配置文件加载存储项失败');
+              }
+            } catch (loadError) {
+              console.error('从配置文件加载存储项失败:', loadError);
+            }
+          }
         } catch (launchError) {
           console.error('启动浏览器实例失败:', launchError);
           this.$message.error(`启动浏览器实例失败: ${launchError.message}`);
@@ -1005,11 +998,36 @@ const CookieManagerPage = {
             cookie: serializableCookie
           });
           
-          // 刷新 Cookie 列表
+          // 关闭对话框
+          this.cookieDialogVisible = false;
+          
+          // 等待一下，确保 Cookie 设置完成
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // 强制刷新 Cookie 列表
+          console.log('强制刷新 Cookie 列表...');
           await this.loadCookies(true); // 强制刷新，确保显示最新数据
           
+          // 如果是编辑模式，尝试在列表中找到并更新当前 Cookie
+          if (this.isEditMode) {
+            const index = this.cookies.findIndex(c => c.name === this.currentCookie.name);
+            if (index !== -1) {
+              console.log(`在列表中找到并更新 Cookie: ${this.currentCookie.name}`);
+              this.cookies[index] = { ...this.currentCookie };
+            }
+          } else {
+            // 如果是添加模式，尝试将新 Cookie 添加到列表中
+            const exists = this.cookies.some(c => c.name === this.currentCookie.name);
+            if (!exists) {
+              console.log(`将新 Cookie 添加到列表中: ${this.currentCookie.name}`);
+              this.cookies.push({ ...this.currentCookie });
+            }
+          }
+          
+          // 保存到配置文件
+          await this.saveCookiesToProfile();
+          
           this.$message.success('Cookie 保存成功');
-          this.cookieDialogVisible = false;
         } catch (error) {
           console.error('保存 Cookie 失败:', error);
           this.$message.error(`保存 Cookie 失败: ${error.message}`);
@@ -1026,8 +1044,17 @@ const CookieManagerPage = {
     async saveStorageItem() {
       try {
         this.saving = true;
+        console.log(`准备保存存储项: ${this.currentStorageItem.key} = ${this.currentStorageItem.value}`);
+        
+        // 先启动浏览器实例，确保可以连接
+        console.log('确保浏览器实例已启动...');
+        await window.ipcRenderer.invoke('launch-browser', this.selectedProfileId);
+        
+        // 等待一下，确保浏览器实例完全启动
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
         // 获取当前存储数据
+        console.log('获取当前存储数据...');
         const storageData = await window.ipcRenderer.invoke(
           'get-local-storage', 
           this.selectedProfileId, 
@@ -1035,11 +1062,16 @@ const CookieManagerPage = {
           this.storageType === 'localStorage' ? 'localStorage' : 'sessionStorage'
         );
         
+        console.log('获取到当前存储数据:', storageData);
+        
         // 更新或添加项
         storageData[this.currentStorageItem.key] = this.currentStorageItem.value;
         
+        console.log('更新后的存储数据:', storageData);
+        
         // 保存回存储
-        await window.ipcRenderer.invoke(
+        console.log('保存更新后的存储数据...');
+        const result = await window.ipcRenderer.invoke(
           'set-local-storage', 
           this.selectedProfileId, 
           this.url, 
@@ -1047,14 +1079,255 @@ const CookieManagerPage = {
           this.storageType === 'localStorage' ? 'localStorage' : 'sessionStorage'
         );
         
-        this.$message.success('存储项保存成功');
-        this.storageDialogVisible = false;
-        this.loadCookies();
+        console.log('保存存储项结果:', result);
+        
+        // 检查结果是否是错误对象
+        if (result && typeof result === 'object' && result.code) {
+          // 如果是错误对象，显示错误信息
+          console.error('返回了错误对象:', result);
+          
+          if (result.code === 'BROWSER_CLOSED') {
+            // 如果浏览器已关闭，尝试启动浏览器
+            console.log('浏览器已关闭，尝试启动浏览器...');
+            await window.ipcRenderer.invoke('launch-browser', this.selectedProfileId);
+            
+            // 等待浏览器启动
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // 重新尝试保存
+            console.log('重新尝试保存存储项...');
+            const retryResult = await window.ipcRenderer.invoke(
+              'set-local-storage', 
+              this.selectedProfileId, 
+              this.url, 
+              storageData,
+              this.storageType === 'localStorage' ? 'localStorage' : 'sessionStorage'
+            );
+            
+            if (retryResult === true) {
+              // 重试成功
+              console.log('重试保存成功');
+              await this.handleSaveSuccess();
+              return;
+            } else {
+              // 重试仍然失败
+              this.$message.error(`保存存储项失败: ${result.error || '未知错误'}`);
+              return;
+            }
+          } else {
+            // 其他错误
+            this.$message.error(`保存存储项失败: ${result.error || '未知错误'}`);
+            return;
+          }
+        } else if (result === true) {
+          // 保存成功
+          await this.handleSaveSuccess();
+        } else {
+          // 其他失败情况
+          this.$message.error('保存存储项失败');
+        }
       } catch (error) {
+        console.error('保存存储项失败:', error);
         this.$message.error('保存存储项失败: ' + error.message);
       } finally {
         this.saving = false;
       }
+    },
+    
+    // 处理保存成功的逻辑
+    async handleSaveSuccess() {
+      // 更新本地数组中的项
+      const index = this.storageItems.findIndex(item => item.key === this.currentStorageItem.key);
+      if (index !== -1) {
+        // 更新已存在的项
+        this.storageItems[index].value = this.currentStorageItem.value;
+        console.log(`更新了存储项 ${this.currentStorageItem.key} 的值`);
+      } else {
+        // 添加新项
+        this.storageItems.push({
+          key: this.currentStorageItem.key,
+          value: this.currentStorageItem.value
+        });
+        console.log(`添加了新存储项 ${this.currentStorageItem.key}`);
+      }
+      
+      // 将存储项保存到配置文件
+      try {
+        // 获取当前配置文件
+        const profiles = await window.ipcRenderer.invoke('get-profiles');
+        const profile = profiles.find(p => p.id === this.selectedProfileId);
+        
+        if (profile) {
+          // 提取当前域名
+          const urlObj = new URL(this.url);
+          const domain = urlObj.hostname;
+          
+          // 检查配置文件中是否有存储数据结构
+          if (!profile.storage) {
+            profile.storage = [];
+          }
+          
+          // 查找当前域名的存储记录
+          let domainStorage = profile.storage.find(
+            s => s.domain === domain && s.type === this.storageType
+          );
+          
+          if (!domainStorage) {
+            // 如果不存在，创建新的域名存储记录
+            domainStorage = {
+              domain: domain,
+              type: this.storageType,
+              items: []
+            };
+            profile.storage.push(domainStorage);
+          }
+          
+          // 确保 items 存在
+          if (!domainStorage.items) {
+            domainStorage.items = [];
+          }
+          
+          // 查找存储项
+          const itemIndex = domainStorage.items.findIndex(i => i.key === this.currentStorageItem.key);
+          
+          if (itemIndex >= 0) {
+            // 更新存储项
+            domainStorage.items[itemIndex].value = this.currentStorageItem.value;
+            console.log(`在配置文件中更新了存储项 ${this.currentStorageItem.key}`);
+          } else {
+            // 添加新存储项
+            domainStorage.items.push({
+              key: this.currentStorageItem.key,
+              value: this.currentStorageItem.value
+            });
+            console.log(`在配置文件中添加了新存储项 ${this.currentStorageItem.key}`);
+          }
+          
+          // 保存配置文件
+          await window.ipcRenderer.invoke('save-profile', profile);
+          console.log('配置文件已更新');
+        }
+      } catch (error) {
+        console.error('将存储项保存到配置文件失败:', error);
+      }
+      
+      this.storageDialogVisible = false;
+      
+      // 等待一下，确保存储设置完成
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // 重新加载存储数据以确保显示最新状态
+      await this.loadCookies(true);
+      this.$message.success('存储项保存成功');
+    },
+    
+    // 处理删除成功的逻辑
+    async handleDeleteSuccess(item) {
+      // 从本地数组中移除被删除的存储项
+      const index = this.storageItems.findIndex(i => i.key === item.key);
+      if (index > -1) {
+        this.storageItems.splice(index, 1);
+        console.log(`从本地数组中移除了存储项 ${item.key}`);
+      } else {
+        console.warn(`在本地数组中找不到存储项 ${item.key}`);
+      }
+      
+      // 从配置文件中删除存储项
+      try {
+        // 获取当前配置文件
+        const profiles = await window.ipcRenderer.invoke('get-profiles');
+        const profile = profiles.find(p => p.id === this.selectedProfileId);
+        
+        if (profile) {
+          // 提取当前域名
+          const urlObj = new URL(this.url);
+          const domain = urlObj.hostname;
+          
+          // 检查配置文件中是否有存储数据结构
+          if (!profile.storage) {
+            profile.storage = [];
+          }
+          
+          // 查找当前域名的存储记录
+          const domainStorageIndex = profile.storage.findIndex(
+            s => s.domain === domain && s.type === this.storageType
+          );
+          
+          if (domainStorageIndex >= 0) {
+            // 从域名的存储数据中移除指定的项
+            const domainStorage = profile.storage[domainStorageIndex];
+            if (domainStorage && domainStorage.items) {
+              const itemIndex = domainStorage.items.findIndex(i => i.key === item.key);
+              if (itemIndex >= 0) {
+                domainStorage.items.splice(itemIndex, 1);
+                console.log(`从配置文件中移除了存储项 ${item.key}`);
+                
+                // 保存配置文件
+                await window.ipcRenderer.invoke('save-profile', profile);
+                console.log('配置文件已更新');
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('从配置文件中删除存储项失败:', error);
+      }
+      
+      // 等待一下，确保存储更改完成
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // 重新加载存储数据以确保显示最新状态
+      await this.loadCookies(true);
+      
+      this.$message.success('存储项删除成功');
+    },
+    
+    // 处理清除成功的逻辑
+    async handleClearSuccess() {
+      // 清空本地数组
+      this.storageItems = [];
+      console.log('已清空本地存储项数组');
+      
+      // 从配置文件中清除存储项
+      try {
+        // 获取当前配置文件
+        const profiles = await window.ipcRenderer.invoke('get-profiles');
+        const profile = profiles.find(p => p.id === this.selectedProfileId);
+        
+        if (profile) {
+          // 提取当前域名
+          const urlObj = new URL(this.url);
+          const domain = urlObj.hostname;
+          
+          // 检查配置文件中是否有存储数据结构
+          if (profile.storage && profile.storage.length > 0) {
+            // 查找当前域名的存储记录
+            const domainStorageIndex = profile.storage.findIndex(
+              s => s.domain === domain && s.type === this.storageType
+            );
+            
+            if (domainStorageIndex >= 0) {
+              // 移除整个域名的存储记录
+              profile.storage.splice(domainStorageIndex, 1);
+              console.log(`从配置文件中移除了域名 ${domain} 的所有 ${this.storageType} 存储项`);
+              
+              // 保存配置文件
+              await window.ipcRenderer.invoke('save-profile', profile);
+              console.log('配置文件已更新');
+            }
+          }
+        }
+      } catch (error) {
+        console.error('从配置文件中清除存储项失败:', error);
+      }
+      
+      this.$message.success(`所有${this.storageType === 'localStorage' ? '本地存储' : '会话存储'}数据已清除`);
+      
+      // 等待一下，确保存储更改完成
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // 重新加载存储数据以确保显示最新状态
+      await this.loadCookies(true);
     },
     
     deleteItem(item) {
@@ -1161,8 +1434,18 @@ const CookieManagerPage = {
           type: 'warning'
         }).then(async () => {
           try {
+            this.processing = true;
+            console.log(`准备删除存储项: ${item.key}`);
+            
+            // 先启动浏览器实例，确保可以连接
+            console.log('确保浏览器实例已启动...');
+            await window.ipcRenderer.invoke('launch-browser', this.selectedProfileId);
+            
+            // 等待一下，确保浏览器实例完全启动
+            await new Promise(resolve => setTimeout(resolve, 1000));
             
             // 获取当前存储数据
+            console.log('获取当前存储数据...');
             const storageData = await window.ipcRenderer.invoke(
               'get-local-storage', 
               this.selectedProfileId, 
@@ -1170,11 +1453,24 @@ const CookieManagerPage = {
               this.storageType === 'localStorage' ? 'localStorage' : 'sessionStorage'
             );
             
+            console.log('当前存储数据:', storageData);
+            console.log(`准备删除键: ${item.key}`);
+            
+            // 检查键是否存在
+            if (!(item.key in storageData)) {
+              console.warn(`键 ${item.key} 在存储中不存在`);
+              this.$message.warning(`存储项 "${item.key}" 不存在于当前存储中`);
+              this.processing = false;
+              return;
+            }
+            
             // 删除项
             delete storageData[item.key];
+            console.log('删除后的存储数据:', storageData);
             
             // 保存回存储
-            await window.ipcRenderer.invoke(
+            console.log('保存更新后的存储数据...');
+            const result = await window.ipcRenderer.invoke(
               'set-local-storage', 
               this.selectedProfileId, 
               this.url, 
@@ -1182,13 +1478,53 @@ const CookieManagerPage = {
               this.storageType === 'localStorage' ? 'localStorage' : 'sessionStorage'
             );
             
-            // 从本地数组中移除被删除的存储项
-            const index = this.storageItems.findIndex(i => i.key === item.key);
-            if (index > -1) {
-              this.storageItems.splice(index, 1);
-            }
+            console.log('保存结果:', result);
             
-            this.$message.success('存储项删除成功');
+            // 检查结果是否是错误对象
+            if (result && typeof result === 'object' && result.code) {
+              // 如果是错误对象，显示错误信息
+              console.error('返回了错误对象:', result);
+              
+              if (result.code === 'BROWSER_CLOSED') {
+                // 如果浏览器已关闭，尝试启动浏览器
+                console.log('浏览器已关闭，尝试启动浏览器...');
+                await window.ipcRenderer.invoke('launch-browser', this.selectedProfileId);
+                
+                // 等待浏览器启动
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // 重新尝试删除
+                console.log('重新尝试删除存储项...');
+                const retryResult = await window.ipcRenderer.invoke(
+                  'set-local-storage', 
+                  this.selectedProfileId, 
+                  this.url, 
+                  storageData,
+                  this.storageType === 'localStorage' ? 'localStorage' : 'sessionStorage'
+                );
+                
+                if (retryResult === true) {
+                  // 重试成功
+                  console.log('重试删除成功');
+                  await this.handleDeleteSuccess(item);
+                  return;
+                } else {
+                  // 重试仍然失败
+                  this.$message.error(`删除存储项失败: ${result.error || '未知错误'}`);
+                  return;
+                }
+              } else {
+                // 其他错误
+                this.$message.error(`删除存储项失败: ${result.error || '未知错误'}`);
+                return;
+              }
+            } else if (result === true) {
+              // 删除成功
+              await this.handleDeleteSuccess(item);
+            } else {
+              // 其他失败情况
+              this.$message.error('存储项删除失败');
+            }
           } catch (error) {
             console.error('删除存储项失败:', error);
             this.$message.error('删除存储项失败: ' + error.message);
@@ -1198,6 +1534,7 @@ const CookieManagerPage = {
           }
         }).catch(() => {
           // 取消删除
+          console.log('用户取消了删除操作');
         });
       }
     },
@@ -1228,19 +1565,77 @@ const CookieManagerPage = {
           type: 'warning'
         }).then(async () => {
           try {
-            await window.ipcRenderer.invoke(
+            console.log(`准备清除所有${this.storageType === 'localStorage' ? '本地存储' : '会话存储'}数据`);
+            
+            // 先启动浏览器实例，确保可以连接
+            console.log('确保浏览器实例已启动...');
+            await window.ipcRenderer.invoke('launch-browser', this.selectedProfileId);
+            
+            // 等待一下，确保浏览器实例完全启动
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // 清除存储
+            console.log('执行清除操作...');
+            const result = await window.ipcRenderer.invoke(
               'clear-local-storage', 
               this.selectedProfileId, 
               this.url,
               this.storageType === 'localStorage' ? 'localStorage' : 'sessionStorage'
             );
-            this.$message.success(`所有${this.storageType === 'localStorage' ? '本地存储' : '会话存储'}数据已清除`);
-            this.loadCookies();
+            
+            console.log('清除结果:', result);
+            
+            // 检查结果是否是错误对象
+            if (result && typeof result === 'object' && result.code) {
+              // 如果是错误对象，显示错误信息
+              console.error('返回了错误对象:', result);
+              
+              if (result.code === 'BROWSER_CLOSED') {
+                // 如果浏览器已关闭，尝试启动浏览器
+                console.log('浏览器已关闭，尝试启动浏览器...');
+                await window.ipcRenderer.invoke('launch-browser', this.selectedProfileId);
+                
+                // 等待浏览器启动
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // 重新尝试清除
+                console.log('重新尝试清除存储数据...');
+                const retryResult = await window.ipcRenderer.invoke(
+                  'clear-local-storage', 
+                  this.selectedProfileId, 
+                  this.url,
+                  this.storageType === 'localStorage' ? 'localStorage' : 'sessionStorage'
+                );
+                
+                if (retryResult === true) {
+                  // 重试成功
+                  console.log('重试清除成功');
+                  await this.handleClearSuccess();
+                  return;
+                } else {
+                  // 重试仍然失败
+                  this.$message.error(`清除${this.storageType === 'localStorage' ? '本地存储' : '会话存储'}数据失败: ${result.error || '未知错误'}`);
+                  return;
+                }
+              } else {
+                // 其他错误
+                this.$message.error(`清除${this.storageType === 'localStorage' ? '本地存储' : '会话存储'}数据失败: ${result.error || '未知错误'}`);
+                return;
+              }
+            } else if (result === true) {
+              // 清除成功
+              await this.handleClearSuccess();
+            } else {
+              // 其他失败情况
+              this.$message.error(`清除${this.storageType === 'localStorage' ? '本地存储' : '会话存储'}数据失败`);
+            }
           } catch (error) {
+            console.error('清除存储数据失败:', error);
             this.$message.error('清除存储数据失败: ' + error.message);
           }
         }).catch(() => {
           // 取消删除
+          console.log('用户取消了清除操作');
         });
       }
     },

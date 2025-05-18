@@ -5,9 +5,22 @@
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
+const { EventEmitter } = require('events');
 const { chromium, firefox, webkit } = require('playwright');
 const profileManager = require('./profile-manager');
 const browserFactory = require('./browser-factory');
+
+// 浏览器实例状态常量
+const INSTANCE_STATUS = {
+  STARTING: 'starting',  // 正在启动
+  RUNNING: 'running',    // 正在运行
+  CLOSING: 'closing',    // 正在关闭
+  CLOSED: 'closed',      // 已关闭
+  ERROR: 'error'         // 出错
+};
+
+// 导出状态常量
+exports.INSTANCE_STATUS = INSTANCE_STATUS;
 
 // 延迟加载 electron 模块
 let electron;
@@ -18,14 +31,20 @@ function getElectron() {
   return electron;
 }
 
-class BrowserManager {
+class BrowserManager extends EventEmitter {
   constructor() {
+    // 调用 EventEmitter 的构造函数
+    super();
+    
     // 存储所有运行中的浏览器实例
     this.browserInstances = new Map();
     this.initialized = false;
     
     // 浏览器适配器缓存
     this.browserAdapters = new Map();
+    
+    // 窗口检查定时器
+    this.windowCheckIntervals = new Map();
     
     // 延迟初始化，在需要时才设置事件监听
     this.init();
@@ -78,17 +97,45 @@ class BrowserManager {
     }
     
     // 检查是否已有运行中的实例
-    if (this.browserInstances.has(profileId)) {
-      const instance = this.browserInstances.get(profileId);
-      if (instance.status === 'running') {
-        console.log(`浏览器实例已在运行中: ${profileId}`);
-        return instance.browser;
-      }
+    if (this.isInstanceRunning(profileId)) {
+      console.log(`浏览器实例已在运行中: ${profileId}`);
+      return this.browserInstances.get(profileId).browser;
     }
     
     // 确保用户数据目录存在
-    const app = getElectron().app;
-    const baseUserDataDir = path.join(app.getPath('userData'), 'browser_profiles');
+    let baseUserDataDir;
+    try {
+      const electron = getElectron();
+      if (!electron) {
+        console.error('无法加载 Electron 模块');
+        throw new Error('无法加载 Electron 模块');
+      }
+      
+      const app = electron.app;
+      if (!app) {
+        console.error('Electron app 对象不存在');
+        throw new Error('Electron app 对象不存在');
+      }
+      
+      if (typeof app.getPath !== 'function') {
+        console.error('app.getPath 方法不存在');
+        throw new Error('app.getPath 方法不存在');
+      }
+      
+      baseUserDataDir = path.join(app.getPath('userData'), 'browser_profiles');
+      console.log(`用户数据目录: ${baseUserDataDir}`);
+    } catch (error) {
+      console.error('获取用户数据目录时出错:', error);
+      // 在非 Electron 环境中使用当前目录作为备选
+      baseUserDataDir = path.join(process.cwd(), 'browser_profiles');
+      console.log(`使用备选用户数据目录: ${baseUserDataDir}`);
+      
+      // 确保目录存在
+      if (!fs.existsSync(baseUserDataDir)) {
+        fs.mkdirSync(baseUserDataDir, { recursive: true });
+        console.log(`创建用户数据目录: ${baseUserDataDir}`);
+      }
+    }
     
     // 获取浏览器类型
     const browserType = profile.startup?.browser || 'system';
@@ -172,9 +219,11 @@ class BrowserManager {
         adapter,
         debugPort,
         userDataDir,
-        status: 'running',
+        status: INSTANCE_STATUS.RUNNING,
         startTime: new Date(),
-        process: browser.process ? browser.process() : null
+        endTime: null,
+        process: browser.process ? browser.process() : null,
+        statusCheckInterval: null
       };
       
       this.browserInstances.set(profileId, instance);
@@ -182,12 +231,116 @@ class BrowserManager {
       // 监听浏览器关闭事件
       browser.on('disconnected', () => {
         console.log(`浏览器实例已断开连接: ${profileId}`);
-        if (this.browserInstances.has(profileId)) {
-          const instance = this.browserInstances.get(profileId);
-          instance.status = 'closed';
-          instance.endTime = new Date();
-        }
+        this._markInstanceAsClosed(profileId, 'disconnected');
       });
+      
+      // 监听浏览器关闭事件 - 增强版
+      if (browser.close && typeof browser.close === 'function') {
+        const originalClose = browser.close.bind(browser);
+        browser.close = async (...args) => {
+          console.log(`浏览器 close 方法被调用: ${profileId}`);
+          this._markInstanceAsClosed(profileId, 'close-method-called');
+          return await originalClose(...args);
+        };
+      }
+      
+      // 添加额外的检测机制
+      // 1. 监听浏览器上下文关闭事件
+      if (browser.contexts && typeof browser.contexts === 'function') {
+        try {
+          const contexts = browser.contexts();
+          if (contexts && contexts.length > 0) {
+            contexts.forEach(context => {
+              if (context && typeof context.on === 'function') {
+                context.on('close', () => {
+                  console.log(`浏览器上下文已关闭: ${profileId}`);
+                  this._markInstanceAsClosed(profileId, 'context-closed');
+                });
+              }
+            });
+          }
+        } catch (error) {
+          console.warn(`无法监听浏览器上下文关闭事件: ${error.message}`);
+        }
+      }
+      
+      // 2. 监听浏览器进程退出
+      if (instance.process) {
+        try {
+          instance.process.on('exit', (code) => {
+            console.log(`浏览器进程已退出: ${profileId}, 退出码: ${code}`);
+            this._markInstanceAsClosed(profileId, 'process-exit');
+          });
+        } catch (error) {
+          console.warn(`无法监听浏览器进程退出事件: ${error.message}`);
+        }
+      }
+      
+      // 3. 监听页面关闭事件
+      const monitorPages = async () => {
+        try {
+          // 获取所有页面
+          if (browser.pages && typeof browser.pages === 'function') {
+            const pages = await browser.pages();
+            if (pages && pages.length > 0) {
+              // 监听每个页面的关闭事件
+              pages.forEach(page => {
+                if (page && typeof page.on === 'function') {
+                  page.on('close', () => {
+                    console.log(`页面已关闭: ${profileId}`);
+                    // 检查是否所有页面都已关闭
+                    setTimeout(async () => {
+                      try {
+                        const remainingPages = await browser.pages();
+                        if (!remainingPages || remainingPages.length === 0) {
+                          console.log(`所有页面已关闭，关闭实例: ${profileId}`);
+                          this._markInstanceAsClosed(profileId, 'all-pages-closed');
+                        } else {
+                          console.log(`还有 ${remainingPages.length} 个页面打开: ${profileId}`);
+                        }
+                      } catch (e) {
+                        console.log(`检查剩余页面时出错: ${e.message}`);
+                        // 如果出错，可能是浏览器已经关闭
+                        this._markInstanceAsClosed(profileId, 'pages-check-error');
+                      }
+                    }, 500);
+                  });
+                }
+              });
+            }
+          }
+        } catch (e) {
+          console.log(`监听页面关闭事件时出错: ${e.message}`);
+        }
+      };
+      
+      // 立即监听当前页面
+      monitorPages();
+      
+      // 每隔一段时间重新监听，以捕获新打开的页面
+      const pageMonitorInterval = setInterval(async () => {
+        if (instance.status === INSTANCE_STATUS.RUNNING) {
+          await monitorPages();
+        } else {
+          clearInterval(pageMonitorInterval);
+        }
+      }, 5000);
+      
+      // 将页面监听定时器保存到实例中
+      instance.pageMonitorInterval = pageMonitorInterval;
+      
+      // 4. 启动定期检查浏览器状态
+      this._startBrowserStatusCheck(profileId, browser);
+      
+      // 4. 添加关闭浏览器的钩子
+      const originalClose = browser.close;
+      if (typeof originalClose === 'function') {
+        browser.close = async (...args) => {
+          console.log(`浏览器关闭方法被调用: ${profileId}`);
+          this._markInstanceAsClosed(profileId, 'close-method');
+          return await originalClose.apply(browser, args);
+        };
+      }
       
       console.log(`浏览器实例启动成功，返回实例对象`);
       return browser;
@@ -200,121 +353,98 @@ class BrowserManager {
   /**
    * 关闭浏览器实例
    * @param {string} profileId 配置文件 ID
-   * @returns {boolean} 是否成功关闭
+   * @returns {Promise<boolean>} 是否成功关闭
    */
   async closeBrowser(profileId) {
-    if (this.browserInstances.has(profileId)) {
-      const instance = this.browserInstances.get(profileId);
-      try {
-        // 使用 Playwright API 关闭浏览器
-        if (instance.browser) {
-          await instance.browser.close();
-        }
-        // 如果进程仍然存在，强制关闭它
-        if (instance.process && !instance.process.killed) {
-          instance.process.kill();
-        }
-        instance.status = 'closed';
-        instance.endTime = new Date();
-        console.log(`浏览器实例 ${profileId} 已关闭`);
-        return true;
-      } catch (error) {
-        console.error(`关闭浏览器实例 ${profileId} 失败:`, error);
-        // 即使出错，也将状态设置为关闭
-        instance.status = 'closed';
-        instance.endTime = new Date();
-        return true;
-      }
+    if (!this.browserInstances.has(profileId)) {
+      console.log(`浏览器实例 ${profileId} 不存在`);
+      return false;
     }
-    return false;
+    
+    const instance = this.browserInstances.get(profileId);
+    
+    // 如果实例已经关闭，直接返回
+    if (instance.status === INSTANCE_STATUS.CLOSED || instance.status === INSTANCE_STATUS.ERROR) {
+      console.log(`浏览器实例 ${profileId} 已经关闭`);
+      return true;
+    }
+    
+    // 更新状态为正在关闭
+    this._updateInstanceStatus(profileId, INSTANCE_STATUS.CLOSING, 'user-close');
+    
+    try {
+      // 使用 Playwright API 关闭浏览器
+      if (instance.browser) {
+        await instance.browser.close();
+      }
+      // 如果进程仍然存在，强制关闭它
+      if (instance.process && !instance.process.killed) {
+        instance.process.kill();
+      }
+      
+      // 关闭成功后更新状态
+      this._markInstanceAsClosed(profileId, 'user-close-success');
+      return true;
+    } catch (error) {
+      console.error(`关闭浏览器实例 ${profileId} 失败:`, error);
+      // 关闭失败，更新状态
+      this._updateInstanceStatus(profileId, INSTANCE_STATUS.ERROR, `close-failed: ${error.message}`);
+      return false;
+    }
   }
+  
   
   /**
    * 获取所有运行中的浏览器实例
-   * @returns {Array} 运行中的实例列表
-   */
+   * @returns {Array<Object>} 浏览器实例数组
+  */
   getRunningInstances() {
-    const runningInstances = [];
+    const instances = [];
+    console.log(`开始获取运行中的浏览器实例，当前实例数量: ${this.browserInstances.size}`);
     
-    for (const [id, instance] of this.browserInstances.entries()) {
-      // 检查实例状态
-      if (instance.status === 'running') {
-        try {
-          // 检查浏览器是否还有效
-          // Playwright 中检查浏览器是否已关闭
-          if (instance.browser) {
-            // 检查浏览器是否已关闭
-            try {
-              // 尝试访问浏览器属性或方法，如果失败则表示浏览器已关闭
-              if (typeof instance.browser.isConnected === 'function') {
-                if (!instance.browser.isConnected()) {
-                  console.log(`浏览器实例 ${id} 已断开连接`);
-                  instance.status = 'closed';
-                  continue;
-                }
-              }
-              
-              // 尝试获取页面信息
-              if (typeof instance.browser.pages === 'function') {
-                // 非阻塞方式检查浏览器页面
-                Promise.resolve().then(async () => {
-                  try {
-                    const pages = await instance.browser.pages();
-                    if (pages.length === 0) {
-                      console.log(`浏览器实例 ${id} 没有活动的页面`);
-                    }
-                  } catch (e) {
-                    console.log(`浏览器实例 ${id} 无法获取页面，可能已经关闭: ${e.message}`);
-                    instance.status = 'closed';
-                  }
-                });
-              } else if (typeof instance.browser.contexts === 'function') {
-                // 如果有 contexts 方法，尝试获取上下文
-                Promise.resolve().then(async () => {
-                  try {
-                    const contexts = await instance.browser.contexts();
-                    if (contexts.length === 0) {
-                      console.log(`浏览器实例 ${id} 没有活动的上下文`);
-                    }
-                  } catch (e) {
-                    console.log(`浏览器实例 ${id} 无法获取上下文，可能已经关闭: ${e.message}`);
-                    instance.status = 'closed';
-                  }
-                });
-              }
-            } catch (e) {
-              // 忽略错误，不阻塞主进程
-              console.log(`检查浏览器实例 ${id} 状态时出错: ${e.message}`);
-            }
-          } else {
-            // 浏览器实例不存在，标记为已关闭
-            instance.status = 'closed';
-            continue;
-          }
-          
-          // 如果状态仍然是运行中，则返回实例信息
-          if (instance.status === 'running') {
-            runningInstances.push({
-              profileId: id,
-              profileName: instance.profile.name,
-              startTime: instance.startTime,
-              status: instance.status
-            });
-          }
-        } catch (error) {
-          console.error(`检查浏览器实例 ${id} 状态失败:`, error);
-          // 如果检查失败，假设实例仍然运行
-          runningInstances.push({
-            profileId: id,
-            profileName: instance.profile.name,
-            startTime: instance.startTime,
-            status: 'running'
-          });
+    for (const [profileId, instance] of this.browserInstances.entries()) {
+      console.log(`检查实例 ${profileId} 状态: ${instance.status}`);
+      
+      // 只检查标记为运行中的实例
+      if (instance.status === INSTANCE_STATUS.RUNNING) {
+        // 基本检查：浏览器对象是否存在
+        if (!instance.browser) {
+          console.log(`实例 ${profileId} 没有浏览器对象，标记为已关闭`);
+          this._markInstanceAsClosed(profileId, 'no-browser-object');
+          continue;
         }
+        
+        // 添加到运行中的实例列表
+        console.log(`实例 ${profileId} 正在运行，状态: ${instance.status}`);
+        instances.push({
+          profileId,
+          profileName: instance.profileName,
+          browserType: instance.browserType,
+          startTime: instance.startTime,
+          status: instance.status  // 添加状态信息
+        });
       }
     }
     
-    return runningInstances;
+    console.log(`找到 ${instances.length} 个运行中的实例`);
+    return instances;
+  }
+  
+  /**
+   * 检查浏览器实例是否在运行
+   * @param {string} profileId 配置文件 ID
+   * @returns {boolean} 是否在运行
+   */
+  isInstanceRunning(profileId) {
+    // 检查实例是否存在
+    if (!profileId || !this.browserInstances.has(profileId)) {
+      return false;
+    }
+    
+    const instance = this.browserInstances.get(profileId);
+    
+    // 检查状态是否为 running
+    return instance.status === INSTANCE_STATUS.RUNNING;
   }
   
   /**
@@ -323,46 +453,18 @@ class BrowserManager {
    * @returns {Object|null} 运行中的浏览器实例，如果不存在则返回 null
    */
   getRunningInstance(profileId) {
-    if (!this.browserInstances.has(profileId)) {
+    if (!profileId) {
+      console.warn('getRunningInstance: profileId 不能为空');
       return null;
     }
     
-    const instance = this.browserInstances.get(profileId);
-    
-    // 检查浏览器实例是否仍在运行
-    if (instance.browser) {
-      // 对于 Playwright 实例，检查 browser 对象是否存在且未关闭
-      try {
-        // 如果浏览器对象存在且有 isConnected 方法，则检查连接状态
-        if (typeof instance.browser.isConnected === 'function' && !instance.browser.isConnected()) {
-          instance.status = 'closed';
-          instance.endTime = instance.endTime || new Date();
-          return null;
-        }
-        
-        // 如果没有 isConnected 方法但有 _connection 属性，也可以检查连接状态
-        if (instance.browser._connection && !instance.browser._connection.isConnected()) {
-          instance.status = 'closed';
-          instance.endTime = instance.endTime || new Date();
-          return null;
-        }
-        
-        // 如果以上检查都通过，则认为浏览器实例仍在运行
-        return instance;
-      } catch (error) {
-        console.error(`检查浏览器实例状态时出错:`, error);
-        // 如果检查过程中出错，保守起见，将状态设为关闭
-        instance.status = 'closed';
-        instance.endTime = instance.endTime || new Date();
-        return null;
-      }
-    } else if (instance.status !== 'closed') {
-      // 如果没有浏览器对象但状态不是关闭，则更新状态
-      instance.status = 'closed';
-      instance.endTime = instance.endTime || new Date();
+    // 检查实例是否在运行
+    if (!this.isInstanceRunning(profileId)) {
+      return null;
     }
     
-    return null;
+    // 返回浏览器实例
+    return this.browserInstances.get(profileId).browser;
   }
   
   /**
@@ -372,12 +474,155 @@ class BrowserManager {
     for (const [id, instance] of this.browserInstances.entries()) {
       if (instance.process && !instance.process.killed) {
         instance.process.kill();
-        instance.status = 'closed';
+        this._updateInstanceStatus(id, INSTANCE_STATUS.CLOSED, 'closeAllInstances');
         instance.endTime = new Date();
       }
     }
   }
   
+  /**
+   * 更新实例状态
+   * @param {string} profileId 配置文件 ID
+   * @param {string} status 新状态
+   * @param {string} reason 状态变更原因
+   * @private
+   */
+  _updateInstanceStatus(profileId, status, reason = 'unknown') {
+    if (!this.browserInstances.has(profileId)) return;
+    
+    const instance = this.browserInstances.get(profileId);
+    const oldStatus = instance.status;
+    
+    // 如果状态没有变化，不做任何操作
+    if (oldStatus === status) return;
+    
+    console.log(`更新实例 ${profileId} 状态: ${oldStatus} -> ${status}, 原因: ${reason}`);
+    
+    // 更新状态
+    instance.status = status;
+    
+    // 发送状态变化事件
+    try {
+      const { getElectron } = require('./electron-utils');
+      const { webContents } = getElectron().BrowserWindow.getAllWindows()[0];
+      if (webContents) {
+        webContents.send('instance-status-changed', {
+          profileId,
+          oldStatus,
+          newStatus: status,
+          reason
+        });
+      }
+    } catch (error) {
+      console.error('发送状态变化事件失败:', error);
+    }
+    
+    // 根据状态设置其他属性
+    if (status === INSTANCE_STATUS.RUNNING) {
+      instance.startTime = instance.startTime || new Date();
+      instance.endTime = null;
+    } else if (status === INSTANCE_STATUS.CLOSED || status === INSTANCE_STATUS.ERROR) {
+      instance.endTime = instance.endTime || new Date();
+      
+      // 清除定时器
+      if (instance.statusCheckInterval) {
+        clearInterval(instance.statusCheckInterval);
+        instance.statusCheckInterval = null;
+      }
+    }
+    
+    // 触发事件
+    this.emit('instance-status-changed', {
+      profileId,
+      oldStatus,
+      status,
+      reason
+    });
+  }
+  
+  /**
+   * 标记实例为已关闭
+   * @param {string} profileId 配置文件 ID
+   * @param {string} reason 关闭原因
+   * @private
+   */
+  _markInstanceAsClosed(profileId, reason = 'unknown') {
+    this._updateInstanceStatus(profileId, INSTANCE_STATUS.CLOSED, reason);
+  }
+  
+  /**
+   * 标记实例为正在运行
+   * @param {string} profileId 配置文件 ID
+   * @param {string} reason 运行原因
+   * @private
+   */
+  _markInstanceAsRunning(profileId, reason = 'unknown') {
+    this._updateInstanceStatus(profileId, INSTANCE_STATUS.RUNNING, reason);
+  }
+  
+  /**
+   * 开始浏览器状态检查
+   * @param {string} profileId 配置文件 ID
+   * @param {Object} browser 浏览器实例
+   * @private
+   */
+  _startBrowserStatusCheck(profileId, browser) {
+    if (!this.browserInstances.has(profileId)) return;
+    
+    const instance = this.browserInstances.get(profileId);
+    
+    // 清除现有的定时器
+    if (instance.statusCheckInterval) {
+      clearInterval(instance.statusCheckInterval);
+    }
+    
+    // 每 3 秒检查一次浏览器状态，提高检测程度
+    instance.statusCheckInterval = setInterval(() => {
+      try {
+        // 如果实例已经不是运行状态，停止检查
+        if (instance.status !== INSTANCE_STATUS.RUNNING) {
+          clearInterval(instance.statusCheckInterval);
+          instance.statusCheckInterval = null;
+          return;
+        }
+        
+        // 检查浏览器是否还连接
+        let shouldMarkAsClosed = false;
+        
+        // 使用 isConnected 方法检查
+        if (browser && typeof browser.isConnected === 'function') {
+          try {
+            const isConnected = browser.isConnected();
+            if (!isConnected) {
+              console.log(`定期检查发现浏览器已断开连接: ${profileId}`);
+              shouldMarkAsClosed = true;
+            }
+          } catch (e) {
+            // 忽略错误，不标记为关闭
+            console.log(`检查浏览器连接状态时出错: ${e.message}`);
+          }
+        }
+        
+        // 检查进程是否还在运行
+        if (instance.process && !shouldMarkAsClosed) {
+          try {
+            // 尝试发送信号 0（仅检查进程是否存在）
+            instance.process.kill(0);
+          } catch (e) {
+            // 如果发送信号失败，说明进程已经终止
+            console.log(`定期检查发现浏览器进程已终止: ${profileId}`);
+            shouldMarkAsClosed = true;
+          }
+        }
+        
+        if (shouldMarkAsClosed) {
+          this._markInstanceAsClosed(profileId, 'status-check');
+        }
+      } catch (error) {
+        console.error(`浏览器状态检查失败: ${profileId}`, error);
+      }
+    }, 3000); // 每 3 秒检查一次，提高响应速度
+  }
   /**
    * 连接到运行中的浏览器实例
    * @param {string} profileId 配置文件 ID
@@ -418,8 +663,8 @@ class BrowserManager {
     const instance = this.browserInstances.get(profileId);
     console.log(`浏览器实例状态: ${instance.status}`);
     
-    if (instance.status !== 'running') {
-      throw new Error('浏览器实例未在运行');
+    if (instance.status !== INSTANCE_STATUS.RUNNING) {
+      throw new Error(`浏览器实例未在运行，当前状态: ${instance.status}`);
     }
     
     // 直接返回实例中的浏览器对象
@@ -442,8 +687,8 @@ class BrowserManager {
       }
       
       const instance = this.browserInstances.get(profileId);
-      if (instance.status !== 'running') {
-        throw new Error('浏览器实例未在运行');
+      if (instance.status !== INSTANCE_STATUS.RUNNING) {
+        throw new Error(`浏览器实例未在运行，当前状态: ${instance.status}`);
       }
       
       const { browser, adapter } = instance;
@@ -476,8 +721,8 @@ class BrowserManager {
       }
       
       const instance = this.browserInstances.get(profileId);
-      if (instance.status !== 'running') {
-        throw new Error('浏览器实例未在运行');
+      if (instance.status !== INSTANCE_STATUS.RUNNING) {
+        throw new Error(`浏览器实例未在运行，当前状态: ${instance.status}`);
       }
       
       const { browser, adapter } = instance;

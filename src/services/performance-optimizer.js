@@ -5,6 +5,14 @@
 const os = require('os');
 const { app } = require('electron');
 const browserManager = require('./browser-manager');
+// 直接定义状态常量，避免导入时序问题
+const INSTANCE_STATUS = {
+  STARTING: 'starting',  // 正在启动
+  RUNNING: 'running',    // 正在运行
+  CLOSING: 'closing',    // 正在关闭
+  CLOSED: 'closed',      // 已关闭
+  ERROR: 'error'         // 出错
+};
 const settingsService = require('./settings-service');
 
 class PerformanceOptimizer {
@@ -234,8 +242,8 @@ class PerformanceOptimizer {
         try {
           // 检查实例是否存在且有效
           const runningInstance = browserManager.getRunningInstance(instance.profileId);
-          if (!runningInstance || runningInstance.status !== 'running') {
-            console.log(`实例 ${instance.profileId} 不在运行状态，跳过优化`);
+          if (!runningInstance || runningInstance.status !== INSTANCE_STATUS.RUNNING) {
+            console.log(`实例 ${instance.profileId} 不在运行状态，当前状态: ${runningInstance ? runningInstance.status : '未知'}，跳过优化`);
             continue;
           }
           
@@ -263,10 +271,7 @@ class PerformanceOptimizer {
                   for (const context of browser.contexts()) {
                     pages = pages.concat(await context.pages());
                   }
-                } else {
-                  // 如果是 context 对象
-                  pages = await browser.pages();
-                }
+                } 
               } catch (e) {
                 console.log(`获取页面失败: ${e.message}`);
               }
@@ -348,10 +353,36 @@ class PerformanceOptimizer {
         const browser = await browserManager.connectToBrowser(instance.profileId);
         
         // 获取所有页面
-        const pages = await browser.pages();
+        let pages = [];
+        if (browser.contexts && browser.contexts().length > 0) {
+          // 如果是 browser 对象，获取所有 context 的页面
+          for (const context of browser.contexts()) {
+            pages = pages.concat(await context.pages());
+          }
+        }
         
         // 获取当前活跃页面
-        const activePage = pages.find(p => p.isFocused) || pages[0];
+        let activePage = null;
+        try {
+          // 尝试找到可见的页面
+          for (const p of pages) {
+            const isVisible = await p.evaluate(() => document.visibilityState === 'visible').catch(() => false);
+            if (isVisible) {
+              activePage = p;
+              break;
+            }
+          }
+          
+          // 如果没有找到可见页面，使用第一个页面
+          if (!activePage && pages.length > 0) {
+            activePage = pages[0];
+          }
+        } catch (e) {
+          console.log(`获取活跃页面失败: ${e.message}`);
+          if (pages.length > 0) {
+            activePage = pages[0];
+          }
+        }
         
         // 对所有页面应用优化
         for (const page of pages) {

@@ -8,6 +8,14 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const electron = require('electron');
 const browserManager = require('./browser-manager');
+// 直接定义状态常量，避免导入时序问题
+const INSTANCE_STATUS = {
+  STARTING: 'starting',  // 正在启动
+  RUNNING: 'running',    // 正在运行
+  CLOSING: 'closing',    // 正在关闭
+  CLOSED: 'closed',      // 已关闭
+  ERROR: 'error'         // 出错
+};
 const profileManager = require('./profile-manager');
 
 class AutomationService {
@@ -219,7 +227,16 @@ class AutomationService {
     
     for (const [taskId, task] of this.runningTasks.entries()) {
       // 清理超过 1 小时的已完成任务
-      if (task.status !== 'running' && task.endTime) {
+      // 注意：这里的 task.status 是自动化任务的状态，不是浏览器实例状态
+      // 但为了一致性，我们也定义了自动化任务的状态常量
+      const TASK_STATUS = {
+        RUNNING: 'running',
+        COMPLETED: 'completed',
+        FAILED: 'failed',
+        STOPPED: 'stopped'
+      };
+      
+      if (task.status !== TASK_STATUS.RUNNING && task.endTime) {
         const timeDiff = now - task.endTime;
         if (timeDiff > 3600000) { // 1 小时 = 3600000 毫秒
           this.runningTasks.delete(taskId);
@@ -398,8 +415,12 @@ class AutomationRunner {
    * @returns {Promise<Object>} 执行结果
    */
   async run() {
-    // 对于 Playwright，我们已经有了 context，只需要创建新页面
-    const page = await this.browser.newPage();
+    // 对于 Playwright，需要使用 context.newPage() 
+    let page;
+    if (this.browser.contexts && this.browser.contexts().length > 0) {
+      // 如果是浏览器对象，使用第一个 context 创建页面
+      page = await this.browser.contexts()[0].newPage();
+    }
     const results = [];
     
     try {
@@ -487,9 +508,11 @@ class AutomationRunner {
     };
     
     switch (step.type) {
-      case 'navigate':
-        // Playwright 使用 'domcontentloaded' 或 'networkidle' 而不是 'networkidle2'
-        return await page.goto(processValue(step.url), { waitUntil: 'networkidle' });
+      case 'navigate':        
+        // 在 Playwright 中，'networkidle' 表示 500ms 内没有网络请求
+        return await page.goto(processValue(step.url), { 
+          waitUntil: step.waitUntil || 'networkidle'
+        });
         
       case 'wait':
         if (step.selector) {
@@ -503,8 +526,9 @@ class AutomationRunner {
           return await page.waitForTimeout(step.time);
         } else if (step.navigation) {
           // Playwright 使用 page.waitForNavigation
+          // 在 Playwright 中，waitForNavigation 的参数与 Puppeteer 有所不同
           return await page.waitForNavigation({ 
-            waitUntil: step.waitUntil === 'networkidle2' ? 'networkidle' : step.waitUntil || 'networkidle',
+            waitUntil: step.waitUntil || 'networkidle',
             timeout: step.timeout || 30000
           });
         }
