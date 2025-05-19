@@ -196,7 +196,7 @@ function createMainWindow() {
           click: () => {
             dialog.showMessageBox({
               title: '关于',
-              message: 'Multi Account Browser v1.0.0',
+              message: `Multi Account Browser v${app.getVersion()}`,
               detail: '多账号浏览器管理工具，支持独立指纹和代理设置'
             });
           }
@@ -1309,6 +1309,89 @@ function registerIPCHandlers() {
       electron: process.versions.electron,
       chrome: process.versions.chrome
     };
+  });
+  
+  // 检查更新
+  ipcMain.handle('check-for-updates', async () => {
+    console.log('检查更新...');
+    try {
+      // 使用 axios 调用 GitHub API 获取最新版本
+      const axios = require('axios');
+      
+      // 获取项目信息，可以从 package.json 中获取仓库信息
+      const packageJson = require('./package.json');
+      const repoUrl = packageJson.repository?.url || 'https://github.com/gyuanlou/multi-account-browser';
+      
+      // 从 URL 中提取仓库名称
+      const repoRegex = /github\.com[\/:]([\w-]+\/[\w-]+)(?:\.git)?/;
+      const match = repoUrl.match(repoRegex);
+      const repo = match ? match[1] : 'gyuanlou/multi-account-browser';
+      
+      console.log(`正在检查仓库 ${repo} 的最新版本...`);
+      
+      // 调用 GitHub API 获取最新发布版本
+      const response = await axios.get(`https://api.github.com/repos/${repo}/releases/latest`, {
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'multi-account-browser'
+        }
+      });
+      
+      const latestRelease = response.data;
+      const latestVersion = latestRelease.tag_name.replace(/^v/, '');
+      const currentVersion = app.getVersion();
+      
+      console.log(`当前版本: ${currentVersion}, 最新版本: ${latestVersion}`);
+      
+      // 比较版本号
+      const hasUpdate = compareVersions(latestVersion, currentVersion) > 0;
+      
+      return {
+        hasUpdate,
+        version: latestVersion,
+        releaseNotes: latestRelease.body || '无发布说明',
+        downloadUrl: latestRelease.html_url
+      };
+    } catch (error) {
+      console.error('检查更新失败:', error);
+      
+      // 如果出错，返回当前版本信息
+      return {
+        hasUpdate: false,
+        version: app.getVersion(),
+        releaseNotes: '无法获取最新版本信息，请检查网络连接'
+      };
+    }
+  });
+  
+  // 比较版本号
+  function compareVersions(v1, v2) {
+    const parts1 = v1.split('.').map(Number);
+    const parts2 = v2.split('.').map(Number);
+    
+    for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+      const part1 = parts1[i] || 0;
+      const part2 = parts2[i] || 0;
+      
+      if (part1 > part2) return 1;
+      if (part1 < part2) return -1;
+    }
+    
+    return 0;
+  }
+  
+  // 打开外部链接
+  ipcMain.handle('open-external-url', async (event, url) => {
+    console.log(`打开外部链接: ${url}`);
+    try {
+      // 使用 Electron 的 shell 模块打开外部链接
+      const { shell } = require('electron');
+      await shell.openExternal(url);
+      return { success: true };
+    } catch (error) {
+      console.error('打开外部链接失败:', error);
+      throw error;
+    }
   });
   
   // 设置服务

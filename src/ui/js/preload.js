@@ -147,7 +147,8 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
       'record-browser-activity',
       
       // 应用信息
-      'get-app-info'
+      'get-app-info',
+      'check-for-updates'
     ];
     if (validChannels.includes(channel)) {
       console.log(`调用主进程方法: ${channel}`, args);

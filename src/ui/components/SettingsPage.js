@@ -524,12 +524,32 @@ const SettingsPage = {
       try {
         const result = await window.ipcRenderer.invoke('check-for-updates');
         if (result.hasUpdate) {
-          this.$confirm(`发现新版本 ${result.version}，是否立即更新？`, '更新可用', {
-            confirmButtonText: '立即更新',
+          // 格式化发布说明
+          const formattedNotes = result.releaseNotes.replace(/\n/g, '<br>');
+          
+          // 使用 HTML 字符串作为消息内容
+          const messageHtml = `
+            <div>
+              <p>发现新版本 ${result.version}</p>
+              <p>发布说明:</p>
+              <div style="max-height: 200px; overflow: auto; margin-bottom: 15px; padding: 10px; border: 1px solid #eee; border-radius: 5px; background-color: #f9f9f9">
+                ${formattedNotes}
+              </div>
+            </div>
+          `;
+          
+          // 使用 Element Plus 的对话框
+          this.$confirm(messageHtml, '更新可用', {
+            confirmButtonText: '前往下载',
             cancelButtonText: '稍后更新',
-            type: 'info'
+            dangerouslyUseHTMLString: true,
+            type: 'info',
+            center: true
           }).then(() => {
-            window.ipcRenderer.invoke('download-update');
+            // 打开下载链接
+            if (result.downloadUrl) {
+              window.ipcRenderer.invoke('open-external-url', result.downloadUrl);
+            }
           }).catch(() => {
             // 取消更新
           });
