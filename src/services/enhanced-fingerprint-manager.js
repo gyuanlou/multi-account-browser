@@ -371,7 +371,12 @@ class EnhancedFingerprintManager {
       allowedFonts: this.getRandomSubset(this.commonFonts, Math.floor(Math.random() * 10) + 5),
       randomFontDetection: Math.random() > 0.5,
       webrtcEnabled: Math.random() > 0.3,
-      modifyWebRTCOffer: Math.random() > 0.5
+      modifyWebRTCOffer: Math.random() > 0.5,
+      // 新增防护选项
+      rectsProtection: Math.random() > 0.3,  // 70% 概率启用 RECTS 矩形防护
+      audioContextProtection: Math.random() > 0.3,  // 70% 概率启用音频指纹保护
+      pluginDataProtection: Math.random() > 0.3,  // 70% 概率启用插件信息保护
+      hardwareInfoProtection: Math.random() > 0.3  // 70% 概率启用硬件信息保护
     };
   }
   
@@ -393,36 +398,189 @@ class EnhancedFingerprintManager {
    */
   generateFingerprintScript(fingerprintConfig) {
     try {
-      // 读取脚本模板
-      let canvasScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'canvas-protection.js'), 'utf8');
-      let fontScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'font-protection.js'), 'utf8');
-      let hardwareScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'hardware-protection.js'), 'utf8');
-      let webrtcScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'webrtc-protection.js'), 'utf8');
+      // 读取脚本模板 - 优先使用 Brave 风格的防护脚本
+      let canvasScript = '';
+      let fontScript = '';
+      let hardwareScript = '';
+      let webrtcScript = '';
+      let audioScript = '';
+      let pluginScript = '';
+      let rectsScript = '';
       
-      // 替换 Canvas 脚本中的变量
-      canvasScript = canvasScript
-        .replace(/{{CANVAS_NOISE_LEVEL}}/g, fingerprintConfig.canvasNoiseLevel || 0)
-        .replace(/{{WEBGL_VENDOR}}/g, fingerprintConfig.webglVendor || 'Google Inc.')
-        .replace(/{{WEBGL_RENDERER}}/g, fingerprintConfig.webglRenderer || 'ANGLE (Intel, Intel(R) UHD Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)');
+      // 根据防护模式选择脚本
+      const useBraveStyle = fingerprintConfig.protectionMode === 'brave';
       
-      // 替换字体脚本中的变量
-      fontScript = fontScript
-        .replace(/{{ALLOWED_FONTS}}/g, JSON.stringify(fingerprintConfig.allowedFonts || this.commonFonts))
-        .replace(/{{RANDOM_FONT_DETECTION}}/g, fingerprintConfig.randomFontDetection ? 'true' : 'false');
+      // 尝试读取 Canvas 防护脚本
+      if (useBraveStyle) {
+        try {
+          canvasScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'brave-canvas-protection.js'), 'utf8');
+          console.log('使用 Brave 风格的 Canvas 防护脚本');
+        } catch (e) {
+          console.warn('读取 Brave 风格的 Canvas 指纹保护脚本失败:', e.message);
+          try {
+            canvasScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'canvas-protection.js'), 'utf8');
+          } catch (e2) {
+            console.warn('读取 Canvas 指纹保护脚本失败:', e2.message);
+          }
+        }
+      } else {
+        try {
+          canvasScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'canvas-protection.js'), 'utf8');
+        } catch (e) {
+          console.warn('读取 Canvas 指纹保护脚本失败:', e.message);
+        }
+      }
       
-      // 替换硬件信息脚本中的变量
-      hardwareScript = hardwareScript
-        .replace(/{{HARDWARE_CONCURRENCY}}/g, fingerprintConfig.hardwareConcurrency || 4)
-        .replace(/{{DEVICE_MEMORY}}/g, fingerprintConfig.deviceMemory || 8)
-        .replace(/{{SCREEN_WIDTH}}/g, fingerprintConfig.screenWidth || 1920)
-        .replace(/{{SCREEN_HEIGHT}}/g, fingerprintConfig.screenHeight || 1080)
-        .replace(/{{COLOR_DEPTH}}/g, fingerprintConfig.colorDepth || 24)
-        .replace(/{{DEVICE_PIXEL_RATIO}}/g, fingerprintConfig.devicePixelRatio || 1);
+      // 尝试读取字体防护脚本
+      if (useBraveStyle) {
+        try {
+          fontScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'brave-font-protection.js'), 'utf8');
+          console.log('使用 Brave 风格的字体防护脚本');
+        } catch (e) {
+          console.warn('读取 Brave 风格的字体指纹保护脚本失败:', e.message);
+          try {
+            fontScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'font-protection.js'), 'utf8');
+          } catch (e2) {
+            console.warn('读取字体指纹保护脚本失败:', e2.message);
+          }
+        }
+      } else {
+        try {
+          fontScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'font-protection.js'), 'utf8');
+        } catch (e) {
+          console.warn('读取字体指纹保护脚本失败:', e.message);
+        }
+      }
       
-      // 替换 WebRTC 脚本中的变量
-      webrtcScript = webrtcScript
-        .replace(/{{DISABLE_WEBRTC}}/g, !fingerprintConfig.webrtcEnabled ? 'true' : 'false')
-        .replace(/{{MODIFY_WEBRTC_OFFER}}/g, fingerprintConfig.modifyWebRTCOffer ? 'true' : 'false');
+      // 尝试读取硬件信息防护脚本
+      if (useBraveStyle) {
+        try {
+          hardwareScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'brave-hardware-protection.js'), 'utf8');
+          console.log('使用 Brave 风格的硬件信息防护脚本');
+        } catch (e) {
+          console.warn('读取 Brave 风格的硬件信息防护脚本失败:', e.message);
+          try {
+            hardwareScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'hardware-protection.js'), 'utf8');
+          } catch (e2) {
+            console.warn('读取硬件信息保护脚本失败:', e2.message);
+          }
+        }
+      } else {
+        try {
+          hardwareScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'hardware-protection.js'), 'utf8');
+        } catch (e) {
+          console.warn('读取硬件信息保护脚本失败:', e.message);
+        }
+      }
+      
+      // 尝试读取 WebRTC 防护脚本
+      if (useBraveStyle) {
+        try {
+          webrtcScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'brave-webrtc-protection.js'), 'utf8');
+          console.log('使用 Brave 风格的 WebRTC 防护脚本');
+        } catch (e) {
+          console.warn('读取 Brave 风格的 WebRTC 防护脚本失败:', e.message);
+          try {
+            webrtcScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'webrtc-protection.js'), 'utf8');
+          } catch (e2) {
+            console.warn('读取 WebRTC 保护脚本失败:', e2.message);
+          }
+        }
+      } else {
+        try {
+          webrtcScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'webrtc-protection.js'), 'utf8');
+        } catch (e) {
+          console.warn('读取 WebRTC 保护脚本失败:', e.message);
+        }
+      }
+      
+      // 尝试读取音频防护脚本
+      if (useBraveStyle) {
+        try {
+          audioScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'brave-audio-protection.js'), 'utf8');
+          console.log('使用 Brave 风格的音频防护脚本');
+        } catch (e) {
+          console.warn('读取 Brave 风格的音频防护脚本失败:', e.message);
+          try {
+            audioScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'audio-protection.js'), 'utf8');
+          } catch (e2) {
+            console.warn('读取音频指纹保护脚本失败:', e2.message);
+          }
+        }
+      } else {
+        try {
+          audioScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'audio-protection.js'), 'utf8');
+        } catch (e) {
+          console.warn('读取音频指纹保护脚本失败:', e.message);
+        }
+      }
+      
+      // 尝试读取插件信息防护脚本
+      if (useBraveStyle) {
+        try {
+          pluginScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'brave-plugin-protection.js'), 'utf8');
+          console.log('使用 Brave 风格的插件信息防护脚本');
+        } catch (e) {
+          console.warn('读取 Brave 风格的插件信息防护脚本失败:', e.message);
+          try {
+            pluginScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'plugin-protection.js'), 'utf8');
+          } catch (e2) {
+            console.warn('读取插件信息保护脚本失败:', e2.message);
+          }
+        }
+      } else {
+        try {
+          pluginScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'plugin-protection.js'), 'utf8');
+        } catch (e) {
+          console.warn('读取插件信息保护脚本失败:', e.message);
+        }
+      }
+      
+      // 尝试读取 RECTS 矩形防护脚本
+      try {
+        rectsScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'rects-protection.js'), 'utf8');
+      } catch (e) {
+        console.warn('读取 RECTS 矩形防护脚本失败:', e.message);
+      }
+      
+      try {
+        rectsScript = fs.readFileSync(path.join(this.fingerprintScriptsDir, 'rects-protection.js'), 'utf8');
+      } catch (e) {
+        console.warn('读取 RECTS 矩形防护脚本失败:', e.message);
+      }
+      
+      // 替换 Canvas 脚本中的变量 - 只有在使用原始脚本时才需要
+      if (canvasScript.includes('{{CANVAS_NOISE_LEVEL}}')) {
+        canvasScript = canvasScript
+          .replace(/{{CANVAS_NOISE_LEVEL}}/g, fingerprintConfig.canvasNoiseLevel || 0)
+          .replace(/{{WEBGL_VENDOR}}/g, fingerprintConfig.webglVendor || 'Google Inc.')
+          .replace(/{{WEBGL_RENDERER}}/g, fingerprintConfig.webglRenderer || 'ANGLE (Intel, Intel(R) UHD Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)');
+      }
+      
+      // 替换字体脚本中的变量 - 只有在使用原始脚本时才需要
+      if (fontScript.includes('{{ALLOWED_FONTS}}')) {
+        fontScript = fontScript
+          .replace(/{{ALLOWED_FONTS}}/g, JSON.stringify(fingerprintConfig.allowedFonts || this.commonFonts))
+          .replace(/{{RANDOM_FONT_DETECTION}}/g, fingerprintConfig.randomFontDetection ? 'true' : 'false');
+      }
+      
+      // 替换硬件信息脚本中的变量 - 只有在使用原始脚本时才需要
+      if (hardwareScript.includes('{{HARDWARE_CONCURRENCY}}')) {
+        hardwareScript = hardwareScript
+          .replace(/{{HARDWARE_CONCURRENCY}}/g, fingerprintConfig.hardwareConcurrency || 4)
+          .replace(/{{DEVICE_MEMORY}}/g, fingerprintConfig.deviceMemory || 8)
+          .replace(/{{SCREEN_WIDTH}}/g, fingerprintConfig.screenWidth || 1920)
+          .replace(/{{SCREEN_HEIGHT}}/g, fingerprintConfig.screenHeight || 1080)
+          .replace(/{{COLOR_DEPTH}}/g, fingerprintConfig.colorDepth || 24)
+          .replace(/{{DEVICE_PIXEL_RATIO}}/g, fingerprintConfig.devicePixelRatio || 1);
+      }
+      
+      // 替换 WebRTC 脚本中的变量 - 只有在使用原始脚本时才需要
+      if (webrtcScript.includes('{{DISABLE_WEBRTC}}')) {
+        webrtcScript = webrtcScript
+          .replace(/{{DISABLE_WEBRTC}}/g, !fingerprintConfig.webrtcEnabled ? 'true' : 'false')
+          .replace(/{{MODIFY_WEBRTC_OFFER}}/g, fingerprintConfig.modifyWebRTCOffer ? 'true' : 'false');
+      }
       
       // 组合所有脚本
       let combinedScript = `
@@ -468,6 +626,13 @@ class EnhancedFingerprintManager {
       ${hardwareScript}
       
       ${webrtcScript}
+      
+      // 添加新增的防护脚本
+      ${fingerprintConfig.audioContextProtection ? audioScript : '// 音频指纹保护已禁用'}
+      
+      ${fingerprintConfig.pluginDataProtection ? pluginScript : '// 插件信息保护已禁用'}
+      
+      ${fingerprintConfig.rectsProtection ? rectsScript : '// RECTS 矩形防护已禁用'}
       `;
       
       return combinedScript;
@@ -536,487 +701,5 @@ class EnhancedFingerprintManager {
     }
   }
   
-  /**
-   * 测试指纹防护效果
-   * @param {Object} browser Playwright 浏览器实例
-   * @returns {Promise<Object>} 测试结果
-   */
-  async testFingerprintProtection(browser) {
-          // 获取浏览器页面 - 在 Playwright 中使用 context.pages()
-      console.log('获取浏览器页面...');
-      
-      if (!browser) {
-        throw new Error('测试指纹防护失败: 浏览器实例不存在');
-      }
-      
-      // 检查是否有上下文
-      let context;
-      if (browser.contexts && typeof browser.contexts === 'function') {
-        const contexts = browser.contexts();
-        if (contexts && contexts.length > 0) {
-          context = contexts[0];
-        } else {
-          throw new Error('测试指纹防护失败: 没有可用的浏览器上下文');
-        }
-      } else if (browser.context && typeof browser.context === 'function') {
-        // 如果是单个上下文的 API
-        context = browser.context();
-      } else if (browser.defaultBrowserContext && typeof browser.defaultBrowserContext === 'function') {
-        // 兼容其他可能的 API
-        context = browser.defaultBrowserContext();
-      } else {
-        // 如果浏览器实例本身就是上下文
-        context = browser;
-      }
-      
-      // 获取页面
-      let page;
-      try {
-        const pages = await context.pages();
-        if (pages && pages.length > 0) {
-          page = pages[0];
-          console.log('使用现有页面进行测试');
-        } else {
-          console.log('创建新页面进行测试');
-          page = await context.newPage();
-        }
-      } catch (error) {
-        console.error('获取页面失败:', error);
-        throw new Error(`测试指纹防护失败: 无法获取或创建页面 - ${error.message}`);
-      }
-      
-      if (!page) {
-        throw new Error('测试指纹防护失败: 无法获取或创建页面');
-      }
-      
-      // 创建一个本地测试页面
-      console.log('创建本地测试页面...');
-      
-      try {
-        // 设置测试页面内容
-        await page.setContent(`
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>指纹防护测试</title>
-            <style>
-              body { font-family: Arial, sans-serif; margin: 20px; }
-              .result { margin: 10px 0; padding: 10px; border: 1px solid #ddd; }
-              .passed { color: green; }
-              .failed { color: red; }
-            </style>
-          </head>
-          <body>
-            <h1>指纹防护测试</h1>
-            <div id="results"></div>
-            
-            <script>
-              // 运行多次测试以检查一致性
-              const TEST_RUNS = 3;
-              
-              // Canvas 指纹测试
-              function testCanvas() {
-                const fingerprints = [];
-                
-                for (let i = 0; i < TEST_RUNS; i++) {
-                  const canvas = document.createElement('canvas');
-                  canvas.width = 200;
-                  canvas.height = 50;
-                  const ctx = canvas.getContext('2d');
-                  
-                  ctx.textBaseline = "top";
-                  ctx.font = "14px 'Arial'";
-                  ctx.textBaseline = "alphabetic";
-                  ctx.fillStyle = "#f60";
-                  ctx.fillRect(125, 1, 62, 20);
-                  ctx.fillStyle = "#069";
-                  ctx.fillText("Hello, world!", 2, 15);
-                  ctx.fillStyle = "rgba(102, 204, 0, 0.7)";
-                  ctx.fillText("Hello, world!", 4, 17);
-                  
-                  fingerprints.push(canvas.toDataURL());
-                }
-                
-                // 检查是否所有指纹都相同
-                const allSame = fingerprints.every(fp => fp === fingerprints[0]);
-                
-                return {
-                  fingerprints: fingerprints,
-                  protected: !allSame, // 如果每次生成的指纹都不同，则表示有保护
-                  details: allSame ? '每次生成的Canvas指纹相同，没有保护' : '每次生成的Canvas指纹不同，有保护'
-                };
-              }
-            
-            // WebGL 指纹测试
-            function testWebGL() {
-              const canvas = document.createElement('canvas');
-              const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-              
-              if (!gl) {
-                return { 
-                  vendor: 'WebGL not supported', 
-                  renderer: 'WebGL not supported',
-                  protected: true,
-                  details: 'WebGL不可用，无法被指纹识别'
-                };
-              }
-              
-              const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-              
-              if (!debugInfo) {
-                return { 
-                  vendor: 'WEBGL_debug_renderer_info not supported', 
-                  renderer: 'WEBGL_debug_renderer_info not supported',
-                  protected: true,
-                  details: 'WebGL调试信息不可用，无法被指纹识别'
-                };
-              }
-              
-              const vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
-              const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-              
-              // 检查是否包含通用名称而不是具体的硬件信息
-              const isGenericVendor = vendor.includes('Generic') || vendor.includes('Mozilla') || vendor.includes('Google');
-              const isGenericRenderer = renderer.includes('Generic') || !renderer.includes('NVIDIA') && !renderer.includes('AMD') && !renderer.includes('Intel');
-              
-              return {
-                vendor: vendor,
-                renderer: renderer,
-                protected: isGenericVendor && isGenericRenderer,
-                details: isGenericVendor && isGenericRenderer ? 'WebGL供应商和渲染器已被通用值替代' : 'WebGL暴露了真实的硬件信息'
-              };
-            }
-            
-            // 字体测试
-            function testFonts() {
-              const baseFonts = ['monospace', 'sans-serif', 'serif'];
-              const fontList = [
-                'Arial', 'Courier New', 'Georgia', 'Times New Roman', 'Verdana',
-                'Helvetica', 'Tahoma', 'Trebuchet MS', 'Impact', 'Comic Sans MS',
-                'Palatino', 'Garamond', 'Bookman', 'Avant Garde', 'Candara',
-                'Calibri', 'Cambria', 'Consolas', 'Segoe UI', 'Optima'
-              ];
-              
-              const detectedFonts = [];
-              
-              for (const font of fontList) {
-                let isDetected = false;
-                
-                for (const baseFont of baseFonts) {
-                  const canvas = document.createElement('canvas');
-                  const ctx = canvas.getContext('2d');
-                  
-                  ctx.font = "72px '" + baseFont + "'";
-                  const baseFontWidth = ctx.measureText('mmmmmmmmmmlli').width;
-                  
-                  ctx.font = "72px '" + font + "', '" + baseFont + "'";
-                  const testFontWidth = ctx.measureText('mmmmmmmmmmlli').width;
-                  
-                  if (testFontWidth !== baseFontWidth) {
-                    isDetected = true;
-                    break;
-                  }
-                }
-                
-                if (isDetected) {
-                  detectedFonts.push(font);
-                }
-              }
-              
-              // 如果检测到的字体少于5个，可能是启用了字体保护
-              const protected = detectedFonts.length < 5;
-              
-              return {
-                detectedFonts: detectedFonts,
-                count: detectedFonts.length,
-                protected: protected,
-                details: protected ? 
-                  '检测到的字体数量较少，可能启用了字体保护' : 
-                  '检测到 ' + detectedFonts.length + ' 个字体，没有启用字体保护'
-              };
-            }
-            
-            // 音频指纹测试
-            function testAudioFingerprint() {
-              try {
-                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                const oscillator = audioCtx.createOscillator();
-                const analyser = audioCtx.createAnalyser();
-                const gain = audioCtx.createGain();
-                const scriptProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
-                
-                gain.gain.value = 0; // 静音
-                oscillator.type = 'triangle';
-                oscillator.connect(analyser);
-                analyser.connect(scriptProcessor);
-                scriptProcessor.connect(gain);
-                gain.connect(audioCtx.destination);
-                
-                oscillator.start(0);
-                
-                const fingerprints = [];
-                
-                return new Promise((resolve) => {
-                  scriptProcessor.onaudioprocess = (e) => {
-                    const data = e.outputBuffer.getChannelData(0);
-                    let sum = 0;
-                    for (let i = 0; i < data.length; i++) {
-                      sum += Math.abs(data[i]);
-                    }
-                    fingerprints.push(sum);
-                    
-                    if (fingerprints.length >= 2) {
-                      oscillator.stop();
-                      scriptProcessor.disconnect();
-                      analyser.disconnect();
-                      gain.disconnect();
-                      audioCtx.close();
-                      
-                      // 检查是否所有指纹都相同
-                      const allSame = fingerprints.every(fp => fp === fingerprints[0]);
-                      
-                      resolve({
-                        protected: !allSame,
-                        details: allSame ? '音频指纹一致，没有保护' : '音频指纹不一致，有保护'
-                      });
-                    }
-                  };
-                  
-                  // 如果5秒后还没有结果，可能是被阻止了
-                  setTimeout(() => {
-                    resolve({
-                      protected: true,
-                      details: '音频上下文可能被阻止，无法生成指纹'
-                    });
-                  }, 5000);
-                });
-              } catch (e) {
-                return {
-                  protected: true,
-                  details: '音频上下文不可用，无法生成指纹: ' + e.message
-                };
-              }
-            }
-            
-            // WebRTC 测试
-            function testWebRTC() {
-              if (!window.RTCPeerConnection) {
-                return {
-                  protected: true,
-                  details: 'WebRTC API不可用，无法泄露IP地址'
-                };
-              }
-              
-              try {
-                const pc = new RTCPeerConnection({
-                  iceServers: [{
-                    urls: "stun:stun.l.google.com:19302"
-                  }]
-                });
-                
-                // 检查是否能获取到候选项
-                let candidatesFound = false;
-                
-                pc.onicecandidate = (e) => {
-                  if (e.candidate) {
-                    candidatesFound = true;
-                  }
-                };
-                
-                pc.createDataChannel('');
-                pc.createOffer().then(offer => pc.setLocalDescription(offer));
-                
-                return new Promise((resolve) => {
-                  // 等待3秒检查是否有候选项
-                  setTimeout(() => {
-                    pc.close();
-                    resolve({
-                      protected: !candidatesFound,
-                      details: candidatesFound ? 'WebRTC可以获取候选项，可能泄露真实IP' : 'WebRTC无法获取候选项，IP地址受到保护'
-                    });
-                  }, 3000);
-                });
-              } catch (e) {
-                return {
-                  protected: true,
-                  details: 'WebRTC创建连接失败，IP地址受到保护: ' + e.message
-                };
-              }
-            }
-            
-            // 硬件信息测试
-            function testHardwareInfo() {
-              const hardwareData = {
-                cores: navigator.hardwareConcurrency || 'unknown',
-                memory: navigator.deviceMemory || 'unknown',
-                platform: navigator.platform || 'unknown',
-                plugins: navigator.plugins ? navigator.plugins.length : 'unknown',
-                touchPoints: navigator.maxTouchPoints || 'unknown'
-              };
-              
-              // 检查是否使用了通用值
-              const isGeneric = 
-                hardwareData.cores === 'unknown' || hardwareData.cores === 2 || hardwareData.cores === 4 ||
-                hardwareData.memory === 'unknown' ||
-                hardwareData.platform === 'unknown' ||
-                hardwareData.plugins === 'unknown' ||
-                hardwareData.touchPoints === 'unknown';
-              
-              return {
-                data: hardwareData,
-                protected: isGeneric,
-                details: isGeneric ? '硬件信息已被通用值替代或隐藏' : '硬件信息可被访问，可能被用于指纹识别'
-              };
-            }
-            
-            // 时区测试
-            function testTimezone() {
-              const timezoneOffset = new Date().getTimezoneOffset();
-              const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-              
-              // 检查时区信息是否一致
-              // 例如，如果时区是Asia/Shanghai，偏移应该是-480分钟
-              let expected = true;
-              if (timezone === 'Asia/Shanghai' && timezoneOffset !== -480) expected = false;
-              if (timezone === 'America/New_York' && timezoneOffset !== 240 && timezoneOffset !== 300) expected = false;
-              if (timezone === 'Europe/London' && timezoneOffset !== 0 && timezoneOffset !== 60) expected = false;
-              
-              return {
-                timezone: timezone,
-                offset: timezoneOffset,
-                protected: !expected,
-                details: !expected ? '时区信息不一致，可能被修改' : '时区信息一致，没有被修改'
-              };
-            }
-            
-            // 插件测试
-            function testPlugins() {
-              if (!navigator.plugins) {
-                return {
-                  count: 0,
-                  protected: true,
-                  details: '插件API不可用，无法被指纹识别'
-                };
-              }
-              
-              const plugins = Array.from(navigator.plugins).map(p => p.name);
-              
-              return {
-                plugins: plugins,
-                count: plugins.length,
-                protected: plugins.length === 0,
-                details: plugins.length === 0 ? '没有检测到插件，插件信息受到保护' : '检测到 ' + plugins.length + ' 个插件，可能被用于指纹识别'
-              };
-            }
-            
-            // 运行所有测试
-            async function runAllTests() {
-              const canvasResults = testCanvas();
-              const webglResults = testWebGL();
-              const fontsResults = testFonts();
-              const hardwareResults = testHardwareInfo();
-              const pluginsResults = testPlugins();
-              const timezoneResults = testTimezone();
-              
-              // 异步测试
-              const audioResults = await testAudioFingerprint();
-              const webrtcResults = await testWebRTC();
-              
-              return {
-                canvas: canvasResults,
-                webgl: webglResults,
-                fonts: fontsResults,
-                hardware: hardwareResults,
-                audio: audioResults,
-                plugins: pluginsResults,
-                timezone: timezoneResults,
-                webrtc: webrtcResults
-              };
-            }
-            
-            // 运行测试并显示结果
-            runAllTests().then(results => {
-              const resultsDiv = document.getElementById('results');
-              
-              // 显示各项测试结果
-              function displayResult(name, result) {
-                const resultDiv = document.createElement('div');
-                resultDiv.className = 'result';
-                resultDiv.innerHTML = 
-                  '<h2>' + name + '</h2>' +
-                  '<p class="' + (result.protected ? 'passed' : 'failed') + '">' +
-                    (result.protected ? '✓ 已保护' : '✗ 未保护') +
-                  '</p>' +
-                  '<p>' + result.details + '</p>';
-                resultsDiv.appendChild(resultDiv);
-              }
-              
-              displayResult('Canvas 指纹', results.canvas);
-              displayResult('WebGL 指纹', results.webgl);
-              displayResult('字体指纹', results.fonts);
-              displayResult('硬件信息', results.hardware);
-              displayResult('音频指纹', results.audio);
-              displayResult('插件信息', results.plugins);
-              displayResult('时区保护', results.timezone);
-              displayResult('WebRTC 保护', results.webrtc);
-              
-              // 将结果保存到全局变量
-              window.fingerprintTestResults = results;
-            });
-          </script>
-        </body>
-        </html>
-        `);
-      
-        // 等待脚本执行完成
-        console.log('等待脚本执行完成...');
-        await page.waitForFunction('window.fingerprintTestResults !== undefined', { timeout: 10000 });
-        
-        // 获取测试结果
-        console.log('获取测试结果...');
-        const testResults = await page.evaluate(() => window.fingerprintTestResults);
-        
-        // 生成最终结果
-        console.log('生成最终结果...');
-        return {
-          success: true,
-          canvas: {
-            protected: testResults.canvas.protected,
-            details: testResults.canvas.details
-          },
-          webrtc: {
-            protected: testResults.webrtc.protected,
-            details: testResults.webrtc.details
-          },
-          fonts: {
-            protected: testResults.fonts.protected,
-            details: testResults.fonts.details
-          },
-          hardware: {
-            protected: testResults.hardware.protected,
-            details: testResults.hardware.details
-          },
-          audio: {
-            protected: testResults.audio.protected,
-            details: testResults.audio.details
-          },
-          plugins: {
-            protected: testResults.plugins.protected,
-            details: testResults.plugins.details
-          },
-          timezone: {
-            protected: testResults.timezone.protected,
-            details: testResults.timezone.details
-          }
-        };
-
-      } catch (error) {
-        console.error('测试指纹防护效果失败:', error);
-        return {
-          success: false,
-          error: error.message
-        };
-      }
-  }
 }
 module.exports = new EnhancedFingerprintManager();

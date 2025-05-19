@@ -315,240 +315,79 @@ class FirefoxAdapter extends BrowserAdapter {
   
   /**
    * 应用指纹保护
-   * @param {Object} page 页面实例
+   * @param {Object} context 浏览器上下文
    * @param {Object} profile 配置文件
    * @returns {Promise<Object>} 应用结果
    */
-  async applyFingerprintProtection(page, profile) {
+  async applyFingerprintProtection(context, profile) {
     try {
-      const fingerprintSettings = profile.fingerprintProtection || {};
+      // 调用父类的实现
+      await BrowserAdapter.prototype.applyFingerprintProtection.call(this, context, profile);
       
-      if (!fingerprintSettings.enabled) {
-        return { success: true, message: '指纹保护未启用' };
-      }
-      
-      // 注入指纹保护脚本
-      await page.addInitScript(({ settings }) => {
-        // Canvas 指纹保护
-        if (settings.canvas !== 'off') {
-          const originalGetContext = HTMLCanvasElement.prototype.getContext;
-          HTMLCanvasElement.prototype.getContext = function(type, ...args) {
-            const context = originalGetContext.apply(this, [type, ...args]);
-            if (context && (type === '2d' || type.includes('webgl'))) {
-              const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
-              this.toDataURL = function(...args) {
-                const result = originalToDataURL.apply(this, args);
-                // 添加随机噪点
-                return result.replace(/.$/, Math.floor(Math.random() * 10));
-              };
-            }
-            return context;
-          };
-        }
+      // Firefox 特有的额外设置
+      if ((profile.fingerprint && profile.fingerprint.enabled) || 
+          (profile.fingerprintProtection && profile.fingerprintProtection.enabled)) {
         
-        // WebRTC 保护
-        if (settings.webRTC === 'disabled') {
-          Object.defineProperty(window, 'RTCPeerConnection', {
-            value: undefined,
-            writable: false
-          });
-        }
-        
-        // 用户代理修改
-        if (settings.userAgent) {
-          Object.defineProperty(navigator, 'userAgent', {
-            value: settings.userAgent,
-            writable: false
-          });
-          
-          // Firefox 特有：修改 appVersion 和 product
-          Object.defineProperty(navigator, 'appVersion', {
-            value: settings.userAgent.replace(/^.*?\//,''),
-            writable: false
-          });
-          
+        // 注入 Firefox 特有的指纹防护代码
+        await context.addInitScript(function() {
+          // 修改 Firefox 特有属性
           Object.defineProperty(navigator, 'product', {
-            value: 'Gecko',
-            writable: false
+            get: function() { return 'Gecko'; }
           });
           
           Object.defineProperty(navigator, 'productSub', {
-            value: '20100101',
-            writable: false
+            get: function() { return '20100101'; }
           });
-        }
-      }, { settings: fingerprintSettings });
-      
-      return { success: true, message: '已应用指纹保护设置' };
-    } catch (error) {
-      console.error('应用指纹保护失败:', error);
-      return { success: false, message: `应用指纹保护失败: ${error.message}` };
-    }
-  }
-  
-  /**
-   * 测试指纹保护
-   * @param {Object} browser 浏览器实例
-   * @returns {Promise<Array>} 测试结果
-   */
-  async testFingerprintProtection(browser) {
-    try {
-      // 获取浏览器页面
-      const context = browser.contexts()[0] || await browser.newContext();
-      const page = context.pages()[0] || await context.newPage();
-      
-      // 创建一个本地测试页面
-      await page.setContent(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>指纹防护测试</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            .result { margin: 10px 0; padding: 10px; border: 1px solid #ddd; }
-            .passed { color: green; }
-            .failed { color: red; }
-          </style>
-        </head>
-        <body>
-          <h1>指纹防护测试</h1>
-          <div id="results"></div>
           
-          <script>
-            // 测试结果数组
-            const testResults = [];
-            
-            // Canvas 指纹测试
-            function testCanvas() {
-              try {
-                const canvas = document.createElement('canvas');
-                canvas.width = 200;
-                canvas.height = 50;
-                const ctx = canvas.getContext('2d');
-                
-                ctx.textBaseline = "top";
-                ctx.font = "14px 'Arial'";
-                ctx.textBaseline = "alphabetic";
-                ctx.fillStyle = "#f60";
-                ctx.fillRect(125, 1, 62, 20);
-                ctx.fillStyle = "#069";
-                ctx.fillText("Hello, world!", 2, 15);
-                
-                // 获取两次数据URL，如果不同则说明有随机化
-                const dataURL1 = canvas.toDataURL();
-                const dataURL2 = canvas.toDataURL();
-                
-                return {
-                  test: 'Canvas 指纹',
-                  passed: dataURL1 !== dataURL2,
-                  details: dataURL1 !== dataURL2 ? 
-                    '通过: Canvas 指纹已被随机化' : 
-                    '失败: Canvas 指纹未被保护'
-                };
-              } catch (e) {
-                return {
-                  test: 'Canvas 指纹',
-                  passed: true,
-                  details: '通过: Canvas API 已被阻止'
-                };
+          // Firefox 特有的隐私设置
+          Object.defineProperty(navigator, 'doNotTrack', {
+            get: function() { return '1'; }
+          });
+          
+          // 模拟 Firefox 的 privacy.resistFingerprinting 设置
+          if (window.screen) {
+            // 标准化屏幕尺寸为 1000x1000
+            const originalScreen = window.screen;
+            Object.defineProperties(window, {
+              'screen': {
+                get: function() {
+                  return {
+                    width: 1000,
+                    height: 1000,
+                    availWidth: 1000,
+                    availHeight: 1000,
+                    colorDepth: originalScreen.colorDepth,
+                    pixelDepth: originalScreen.pixelDepth
+                  };
+                }
               }
-            }
-            
-            // WebRTC 测试
-            function testWebRTC() {
-              try {
-                const rtcAvailable = typeof window.RTCPeerConnection !== 'undefined';
-                return {
-                  test: 'WebRTC 保护',
-                  passed: !rtcAvailable,
-                  details: !rtcAvailable ? 
-                    '通过: WebRTC API 已被禁用' : 
-                    '失败: WebRTC API 可用，可能泄露真实 IP'
-                };
-              } catch (e) {
-                return {
-                  test: 'WebRTC 保护',
-                  passed: true,
-                  details: '通过: WebRTC API 访问出错，可能已被禁用'
-                };
-              }
-            }
-            
-            // Firefox 特有测试：检查浏览器标识
-            function testFirefoxIdentity() {
-              const isFirefox = navigator.userAgent.includes('Firefox');
-              const isGecko = navigator.product === 'Gecko';
-              
-              return {
-                test: 'Firefox 标识',
-                passed: isFirefox && isGecko,
-                details: isFirefox && isGecko ? 
-                  '通过: 浏览器正确标识为 Firefox' : 
-                  '失败: 浏览器未正确标识为 Firefox'
-              };
-            }
-            
-            // 隐私保护测试
-            function testPrivacyResistFingerprinting() {
-              // 检查 Firefox 的 privacy.resistFingerprinting 是否生效
-              const screenSize = {
-                width: window.screen.width,
-                height: window.screen.height
-              };
-              
-              // 如果 privacy.resistFingerprinting 生效，屏幕尺寸会被设为 1000x1000
-              const isStandardized = screenSize.width === 1000 && screenSize.height === 1000;
-              
-              return {
-                test: '隐私保护',
-                passed: isStandardized,
-                details: isStandardized ? 
-                  '通过: Firefox 隐私保护已启用' : 
-                  '失败: Firefox 隐私保护未启用'
-              };
-            }
-            
-            // 运行所有测试
-            testResults.push(testCanvas());
-            testResults.push(testWebRTC());
-            testResults.push(testFirefoxIdentity());
-            testResults.push(testPrivacyResistFingerprinting());
-            
-            // 显示结果
-            const resultsDiv = document.getElementById('results');
-            testResults.forEach(result => {
-              const resultDiv = document.createElement('div');
-              resultDiv.className = \`result \${result.passed ? 'passed' : 'failed'}\`;
-              resultDiv.innerHTML = 
-              \`<h3>\${result.test}: \${result.passed ? '通过' : '未通过'}</h3>
-              <p>\${result.details}</p>\`;
-              resultsDiv.appendChild(resultDiv);
+            });
+          }
+        });
+        
+        // 如果有用户代理设置，进行额外设置
+        if (profile.fingerprint?.userAgent) {
+          await context.addInitScript(function(ua) {
+            Object.defineProperty(navigator, 'userAgent', {
+              get: function() { return ua; }
             });
             
-            // 将结果保存到全局变量
-            window.fingerprintTestResults = testResults;
-          </script>
-        </body>
-        </html>
-      `);
+            // Firefox 特有：修改 appVersion
+            Object.defineProperty(navigator, 'appVersion', {
+              get: function() { return ua.replace(/^.*?\//,''); }
+            });
+          }, profile.fingerprint.userAgent);
+        }
+      }
       
-      // 等待测试完成
-      await page.waitForFunction('window.fingerprintTestResults && window.fingerprintTestResults.length > 0');
-      
-      // 获取测试结果
-      const testResults = await page.evaluate(() => window.fingerprintTestResults);
-      
-      return testResults;
+      return { success: true, message: '已应用 Firefox 指纹保护设置' };
     } catch (error) {
-      console.error('测试指纹保护失败:', error);
-      return [{
-        test: '测试执行',
-        passed: false,
-        details: `测试过程中出错: ${error.message}`
-      }];
+      console.error('应用 Firefox 指纹保护失败:', error);
+      return { success: false, message: `应用 Firefox 指纹保护失败: ${error.message}` };
     }
   }
   
+
   /**
    * 测试代理
    * @param {Object} proxyConfig 代理配置

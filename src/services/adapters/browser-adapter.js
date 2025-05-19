@@ -57,7 +57,172 @@ class BrowserAdapter {
    * @returns {Promise<void>}
    */
   async applyFingerprintProtection(context, profile) {
-    throw new Error('必须实现 applyFingerprintProtection 方法');
+    const fs = require('fs');
+    const path = require('path');
+    
+    // 获取指纹配置，兼容两种配置路径
+    const fingerprint = profile.fingerprint || profile.fingerprintProtection || {};
+    
+    // 详细输出配置信息便于调试
+    console.log(`[指纹防护] 配置文件信息:`, JSON.stringify(profile, null, 2));
+    console.log(`[指纹防护] 指纹防护配置:`, JSON.stringify(fingerprint, null, 2));
+    
+    // 检查是否启用了指纹防护
+    if (!fingerprint.enabled) {
+      console.log(`[指纹防护] 指纹防护未启用`);
+      return;
+    }
+    
+    // 检查是否启用了 Brave 风格防护
+    const useBraveStyle = fingerprint.protectionMode === 'brave';
+    console.log(`[指纹防护] 防护模式: ${useBraveStyle ? 'Brave风格' : '标准'}`);
+    
+    // 获取指纹防护脚本路径
+    const braveScriptPath = path.join(process.cwd(), 'resources', 'fingerprint-scripts', 'brave-fingerprint-protection.js');
+    const standardScriptPath = path.join(process.cwd(), 'resources', 'fingerprint-scripts', 'preload-fingerprint-protection.js');
+    
+    // 选择使用哪个脚本
+    const scriptPath = useBraveStyle ? braveScriptPath : standardScriptPath;
+    console.log(`[指纹防护] 使用脚本路径: ${scriptPath}`);
+    
+    // 确保指纹防护脚本存在
+    if (!fs.existsSync(scriptPath)) {
+      console.warn(`[指纹防护] 指纹防护脚本不存在: ${scriptPath}`);
+      return;
+    }
+    
+    try {
+      // 准备指纹防护配置，传递给脚本
+      const fingerprintConfig = {
+        enabled: true,
+        canvasProtection: true,  // 默认启用 Canvas 防护
+        webrtcProtection: fingerprint.webrtcMode === 'disabled',
+        hardwareInfoProtection: fingerprint.hardwareInfoProtection === true,
+        audioContextProtection: fingerprint.audioContextProtection === true,
+        pluginDataProtection: fingerprint.pluginDataProtection === true,
+        rectsProtection: fingerprint.rectsProtection === true,
+        timezoneProtection: fingerprint.timezoneProtection === true,
+        fontProtection: fingerprint.fontProtection === true,
+        screenWidth: fingerprint.screenWidth,
+        screenHeight: fingerprint.screenHeight,
+        userAgent: fingerprint.userAgent,
+        protectionMode: fingerprint.protectionMode
+      };
+      
+      console.log(`[指纹防护] 传递给脚本的配置:`, JSON.stringify(fingerprintConfig, null, 2));
+      
+      // 添加调试脚本，在页面上显示指纹防护状态
+      const debugScript = `
+        // 创建调试面板
+        setTimeout(() => {
+          try {
+            const debugPanel = document.createElement('div');
+            debugPanel.id = 'fingerprint-debug-panel';
+            debugPanel.style.position = 'fixed';
+            debugPanel.style.bottom = '10px';
+            debugPanel.style.left = '10px';
+            debugPanel.style.zIndex = '9999999';
+            debugPanel.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+            debugPanel.style.color = '#fff';
+            debugPanel.style.padding = '10px';
+            debugPanel.style.borderRadius = '5px';
+            debugPanel.style.fontSize = '12px';
+            debugPanel.style.fontFamily = 'monospace';
+            debugPanel.style.maxWidth = '400px';
+            debugPanel.style.maxHeight = '300px';
+            debugPanel.style.overflow = 'auto';
+            
+            // 显示指纹防护状态
+            const config = window.__FINGERPRINT_CONFIG__ || {};
+            let html = '<h3>指纹防护状态</h3>';
+            html += '<ul>';
+            for (const key in config) {
+              html += '<li><strong>' + key + ':</strong> ' + config[key] + '</li>';
+            }
+            html += '</ul>';
+            debugPanel.innerHTML = html;
+            
+            document.body.appendChild(debugPanel);
+            console.log('调试面板已添加到页面');
+          } catch (e) {
+            console.error('创建调试面板失败:', e);
+          }
+        }, 2000);
+      `;
+      
+      // 在现有页面上注入脚本
+      const pages = context.pages();
+      for (const page of pages) {
+        // 先注入配置
+        await page.addInitScript(function(config) {
+          window.__FINGERPRINT_CONFIG__ = config;
+          console.log('指纹防护配置已注入:', config);
+        }, fingerprintConfig);
+        
+        // 注入调试脚本
+        await page.addInitScript(debugScript);
+        
+        // 再注入防护脚本
+        await page.addInitScript({ path: scriptPath });
+        console.log(`[指纹防护] 已在现有页面上注入${useBraveStyle ? 'Brave风格' : '标准'}指纹防护脚本`);
+      }
+      
+      // 对新页面进行注入
+      context.on('page', async page => {
+        try {
+          // 先注入配置
+          await page.addInitScript(function(config) {
+            window.__FINGERPRINT_CONFIG__ = config;
+            console.log('指纹防护配置已注入:', config);
+          }, fingerprintConfig);
+          
+          // 注入调试脚本
+          await page.addInitScript(debugScript);
+          
+          // 再注入防护脚本
+          await page.addInitScript({ path: scriptPath });
+          console.log(`[指纹防护] 已在新页面上注入${useBraveStyle ? 'Brave风格' : '标准'}指纹防护脚本`);
+        } catch (error) {
+          console.error(`[指纹防护] 注入指纹防护脚本失败:`, error);
+        }
+      });
+      
+      // 如果用户配置了屏幕分辨率，应用屏幕分辨率设置
+      if (profile.fingerprint?.screenWidth && profile.fingerprint?.screenHeight) {
+        await context.addInitScript(function(size) {
+          // 修改 window.screen 属性
+          Object.defineProperty(window.screen, 'width', {
+            get: function() { return size.width; }
+          });
+          Object.defineProperty(window.screen, 'height', {
+            get: function() { return size.height; }
+          });
+          Object.defineProperty(window.screen, 'availWidth', {
+            get: function() { return size.width; }
+          });
+          Object.defineProperty(window.screen, 'availHeight', {
+            get: function() { return size.height; }
+          });
+          
+          // 修改 window.innerWidth/Height
+          Object.defineProperty(window, 'innerWidth', {
+            get: function() { return size.width; }
+          });
+          Object.defineProperty(window, 'innerHeight', {
+            get: function() { return size.height; }
+          });
+          
+          console.log(`[指纹防护] 已设置屏幕分辨率为 ${size.width}x${size.height}`);
+        }, { 
+          width: parseInt(profile.fingerprint.screenWidth), 
+          height: parseInt(profile.fingerprint.screenHeight) 
+        });
+      }
+      
+      console.log(`[指纹防护] 成功应用${useBraveStyle ? 'Brave风格' : '标准'}指纹防护`);
+    } catch (error) {
+      console.error(`[指纹防护] 应用指纹防护失败:`, error);
+    }
   }
   
   /**
@@ -97,14 +262,7 @@ class BrowserAdapter {
     throw new Error('必须实现 getBrowserType 方法');
   }
   
-  /**
-   * 测试指纹保护
-   * @param {Object} browser 浏览器实例
-   * @returns {Promise<Array>} 测试结果
-   */
-  async testFingerprintProtection(browser) { 
-    throw new Error('必须实现 testFingerprintProtection 方法'); 
-  }
+  
   
   /**
    * 设置代理

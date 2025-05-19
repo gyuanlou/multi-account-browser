@@ -265,6 +265,11 @@ class ChromeAdapter extends BrowserAdapter {
       ]
     });
     
+    // 应用指纹防护（使用基类中的实现）
+    if (options.profile && options.profile.fingerprint && options.profile.fingerprint.enabled) {
+      await this.applyFingerprintProtection(context, options.profile);
+    }
+    
     // 设置下载行为
     const pages = context.pages();
     if (pages.length > 0) {
@@ -365,8 +370,47 @@ class ChromeAdapter extends BrowserAdapter {
    * @returns {Promise<void>}
    */
   async applyFingerprintProtection(context, profile) {
-    if (!profile.fingerprintProtection || !profile.fingerprintProtection.enabled) {
+    // 检查指纹保护是否启用
+    const fingerprintEnabled = 
+      (profile.fingerprint && profile.fingerprint.enabled) || 
+      (profile.fingerprintProtection && profile.fingerprintProtection.enabled);
+    
+    if (!fingerprintEnabled) {
       return { success: true, message: '指纹保护未启用' };
+    }
+    
+    console.log(`[指纹防护] Chrome适配器应用指纹防护`);
+    
+    // 先调用基类的实现，注入 Brave 风格预加载脚本
+    try {
+      // 调用父类的实现
+      const fs = require('fs');
+      const path = require('path');
+      
+      // 获取指纹防护预加载脚本路径
+      const fingerprintPreloadPath = path.join(process.cwd(), 'resources', 'fingerprint-scripts', 'preload-fingerprint-protection.js');
+      
+      // 确保指纹防护预加载脚本存在
+      if (fs.existsSync(fingerprintPreloadPath)) {
+        // 在现有页面上注入脚本
+        const pages = context.pages();
+        for (const page of pages) {
+          await page.addInitScript({ path: fingerprintPreloadPath });
+          console.log(`[指纹防护] 已在现有页面上注入指纹防护脚本`);
+        }
+        
+        // 对新页面进行注入
+        context.on('page', async page => {
+          try {
+            await page.addInitScript({ path: fingerprintPreloadPath });
+            console.log(`[指纹防护] 已在新页面上注入指纹防护脚本`);
+          } catch (error) {
+            console.error(`[指纹防护] 注入指纹防护脚本失败:`, error);
+          }
+        });
+      }
+    } catch (error) {
+      console.error(`[指纹防护] 应用 Brave 风格预加载脚本失败:`, error);
     }
     
     // 提取指纹保护设置
@@ -420,132 +464,7 @@ class ChromeAdapter extends BrowserAdapter {
     }
   }
   
-  /**
-   * 测试指纹保护
-   * @param {Object} context 浏览器上下文
-   * @returns {Promise<Array>} 测试结果
-   */
-  async testFingerprintProtection(context) {
-    try {
-      // 获取浏览器页面
-      const pages = await context.pages();
-      const page = pages.length > 0 ? pages[0] : await context.newPage();
-      
-      // 创建一个本地测试页面
-      await page.setContent(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>指纹防护测试</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            .result { margin: 10px 0; padding: 10px; border: 1px solid #ddd; }
-            .passed { color: green; }
-            .failed { color: red; }
-          </style>
-        </head>
-        <body>
-          <h1>指纹防护测试</h1>
-          <div id="results"></div>
-          
-          <script>
-            // 测试结果数组
-            const testResults = [];
-            
-            // Canvas 指纹测试
-            function testCanvas() {
-              try {
-                const canvas = document.createElement('canvas');
-                canvas.width = 200;
-                canvas.height = 50;
-                const ctx = canvas.getContext('2d');
-                
-                ctx.textBaseline = "top";
-                ctx.font = "14px 'Arial'";
-                ctx.textBaseline = "alphabetic";
-                ctx.fillStyle = "#f60";
-                ctx.fillRect(125, 1, 62, 20);
-                ctx.fillStyle = "#069";
-                ctx.fillText("Hello, world!", 2, 15);
-                
-                // 获取两次数据URL，如果不同则说明有随机化
-                const dataURL1 = canvas.toDataURL();
-                const dataURL2 = canvas.toDataURL();
-                
-                return {
-                  test: 'Canvas 指纹',
-                  passed: dataURL1 !== dataURL2,
-                  details: dataURL1 !== dataURL2 ? 
-                    '通过: Canvas 指纹已被随机化' : 
-                    '失败: Canvas 指纹未被保护'
-                };
-              } catch (e) {
-                return {
-                  test: 'Canvas 指纹',
-                  passed: true,
-                  details: '通过: Canvas API 已被阻止'
-                };
-              }
-            }
-            
-            // WebRTC 测试
-            function testWebRTC() {
-              try {
-                const rtcAvailable = typeof window.RTCPeerConnection !== 'undefined';
-                return {
-                  test: 'WebRTC 保护',
-                  passed: !rtcAvailable,
-                  details: !rtcAvailable ? 
-                    '通过: WebRTC API 已被禁用' : 
-                    '失败: WebRTC API 可用，可能泄露真实 IP'
-                };
-              } catch (e) {
-                return {
-                  test: 'WebRTC 保护',
-                  passed: true,
-                  details: '通过: WebRTC API 访问出错，可能已被禁用'
-                };
-              }
-            }
-            
-            // 运行所有测试
-            testResults.push(testCanvas());
-            testResults.push(testWebRTC());
-            
-            // 显示结果
-            const resultsDiv = document.getElementById('results');
-            testResults.forEach(result => {
-              const resultDiv = document.createElement('div');
-              resultDiv.className = \`result \${result.passed ? 'passed' : 'failed'}\`;
-              resultDiv.innerHTML = 
-              \`<h3>\${result.test}: \${result.passed ? '通过' : '未通过'}</h3>
-              <p>\${result.details}</p>\`;
-              resultsDiv.appendChild(resultDiv);
-            });
-            
-            // 将结果保存到全局变量
-            window.fingerprintTestResults = testResults;
-          </script>
-        </body>
-        </html>
-      `);
-      
-      // 等待测试完成
-      await page.waitForFunction('window.fingerprintTestResults && window.fingerprintTestResults.length > 0');
-      
-      // 获取测试结果
-      const testResults = await page.evaluate(() => window.fingerprintTestResults);
-      
-      return testResults;
-    } catch (error) {
-      console.error('测试指纹保护失败:', error);
-      return [{
-        test: '测试执行',
-        passed: false,
-        details: `测试过程中出错: ${error.message}`
-      }];
-    }
-  }
+ 
   
   /**
    * 测试代理

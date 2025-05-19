@@ -26,6 +26,7 @@ let cookieManager;
 let enhancedFingerprintManager;
 let performanceOptimizer;
 let browserFactory;
+let fingerprintTestManager;
 
 // 初始化服务模块
 function initializeServices() {
@@ -46,6 +47,15 @@ function initializeServices() {
     enhancedFingerprintManager = require('./src/services/enhanced-fingerprint-manager');
     performanceOptimizer = require('./src/services/performance-optimizer');
     browserFactory = require('./src/services/browser-factory');
+    
+    // 加载指纹测试平台管理器
+    try {
+      fingerprintTestManager = require('./src/services/fingerprint-test-manager');
+      console.log('指纹测试平台管理器加载成功');
+    } catch (testError) {
+      console.error('加载指纹测试平台管理器失败:', testError);
+    }
+    
     console.log('增强服务模块加载成功');
   } catch (error) {
     console.error('加载增强服务模块失败:', error);
@@ -1167,16 +1177,127 @@ function registerIPCHandlers() {
     }
     
     try {
-      ipcMain.handle('test-fingerprint-protection', async (event, profileId) => {
-        try {
-          const browser = await browserManager.connectToBrowser(profileId);
-          return await enhancedFingerprintManager.testFingerprintProtection(browser);
-        } catch (error) {
-          throw new Error(`测试指纹防检测失败: ${error.message}`);
+      ipcMain.handle('test-fingerprint-protection', async (event, data) => {
+        // 支持新的测试平台功能
+        const { profileId, platform, fingerprint } = typeof data === 'object' ? data : { profileId: data };
+        const browser = browserManager.getRunningInstance(profileId)?.browser;
+        
+        if (!browser) {
+          throw new Error('没有运行中的浏览器实例');
         }
+        
+        // 如果指定了测试平台，使用指纹测试管理器
+        if (platform && fingerprintTestManager) {
+          try {
+            const results = await fingerprintTestManager.runTest(browser, platform);
+            return {
+              success: true,
+              details: `在 ${results.platform} 平台上测试成功。指纹防护有效。`,
+              data: results.data
+            };
+          } catch (testError) {
+            console.error('指纹测试失败:', testError);
+            return {
+              success: false,
+              details: `测试失败: ${testError.message}`,
+              suggestion: '尝试启用增强模式（Brave 风格）以提高防护效果'
+            };
+          }
+        }
+        
+        // 如果没有指定测试平台或指纹测试管理器不可用
+        return {
+          success: false,
+          details: '指纹测试管理器不可用，请选择指定的测试平台',
+          suggestion: '请选择 yalala.com 或其他测试平台进行测试'
+        };
       });
     } catch (error) {
       console.warn('处理程序 test-fingerprint-protection 已存在，跳过注册');
+    }
+    
+    // 注册指纹测试平台相关的处理程序
+    if (fingerprintTestManager) {
+      try {
+        // 获取所有测试平台
+        ipcMain.handle('get-test-platforms', (event, type) => {
+          return fingerprintTestManager.getAllPlatforms();
+        });
+        
+        // 打开URL在浏览器中 - 先关闭再重新启动浏览器
+        ipcMain.handle('open-url-in-browser', async (event, profileId, url) => {
+          console.log('尝试在浏览器中打开URL:', url, '配置ID:', profileId);
+          
+          try {
+            // 获取配置信息
+            const profile = await profileManager.getProfileById(profileId);
+            if (!profile) {
+              throw new Error('找不到配置信息');
+            }
+            
+            // 先关闭现有实例
+            const instance = browserManager.getRunningInstance(profileId);
+            if (instance) {
+              await browserManager.closeBrowser(profileId);
+              // 等待一小段时间确保浏览器已关闭
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            
+            // 修改配置的启动URL
+            const updatedProfile = { ...profile };
+            if (!updatedProfile.startup) {
+              updatedProfile.startup = {};
+            }
+            updatedProfile.startup.startUrl = url;
+            
+            // 保存更新后的配置
+            await profileManager.saveProfile(updatedProfile);
+            
+            // 启动浏览器
+            await browserManager.launchBrowser(profileId, { startUrl: url });
+            
+            return { success: true };
+          } catch (error) {
+            console.error('打开URL失败:', error);
+            throw error;
+          }
+        });
+        
+        // 运行指纹对比测试
+        ipcMain.handle('run-comparison-test', async (event, data) => {
+          const { profileId, platform, fingerprint } = data;
+          const browser = browserManager.getRunningInstance(profileId)?.browser;
+          
+          if (!browser) {
+            throw new Error('没有运行中的浏览器实例');
+          }
+          
+          try {
+            const results = await fingerprintTestManager.runComparisonTest(browser, fingerprint, [platform]);
+            return {
+              success: true,
+              details: `在 ${results[0].platform} 平台上完成对比测试。`,
+              data: results[0]
+            };
+          } catch (testError) {
+            console.error('指纹对比测试失败:', testError);
+            return {
+              success: false,
+              details: `对比测试失败: ${testError.message}`,
+              suggestion: '请确保浏览器实例正常运行并且网络连接正常'
+            };
+          }
+        });
+        
+        // 获取最近的测试结果
+        ipcMain.handle('get-recent-test-results', (event, count) => {
+          return fingerprintTestManager.getRecentTestResults(count || 5);
+        });
+      } catch (error) {
+        console.error('注册指纹测试平台处理程序失败:', error);
+      }
+    } else {
+      console.warn('指纹测试平台管理器不可用，跳过相关处理程序注册');
     }
   }
   

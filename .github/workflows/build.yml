@@ -225,18 +225,12 @@ jobs:
           echo "" >> CHANGELOG.md
           echo "## 中文 | [English](#multi-account-browser-v${{ steps.get_version.outputs.version }})" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
-          echo "### 更新内容" >> CHANGELOG.md
-          echo "- 优化了日志输出，减少了不必要的控制台信息" >> CHANGELOG.md
-          echo "- 减少了各个浏览器适配器（Chrome、Edge、Firefox、Safari）中的不必要日志输出" >> CHANGELOG.md
-          echo "- 减少了浏览器管理器中的不必要日志输出" >> CHANGELOG.md
-          echo "- 修复了前端无法获取浏览器实例状态常量的问题" >> CHANGELOG.md
-          echo "- 在 preload.js 中添加了 get-instance-status-constants 到有效通道白名单中" >> CHANGELOG.md
-          echo "- 在 app.js 中添加了默认的浏览器实例状态常量" >> CHANGELOG.md
-          echo "- 修复了浏览器实例的启动和关闭问题" >> CHANGELOG.md
-          echo "- 修正了浏览器实例状态判断逻辑" >> CHANGELOG.md
-          echo "- 改进了用户界面，使运行中的配置项背景色变为浅蓝色" >> CHANGELOG.md
-          echo "- 修复了Cookie管理功能的连接问题" >> CHANGELOG.md
-          echo "- 确保浏览器启动时使用配置的启始页" >> CHANGELOG.md
+          echo "### 更新内容" >> CHANGELOG.md        
+          echo "- 改进了指纹防护系统，添加了随机种子一致性机制" >> CHANGELOG.md
+          echo "- 增强了Canvas、音频和WebRTC指纹防护功能" >> CHANGELOG.md
+          echo "- 修复了RECTS矩形防护配置的保存和加载问题" >> CHANGELOG.md
+          echo "- 为新配置文件添加了自动随机种子生成功能" >> CHANGELOG.md
+          echo "- 提高了多个浏览器实例之间的指纹一致性" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           echo "### 下载地址" >> CHANGELOG.md
           echo "- [Windows 版本](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/multi-account-browser-${{ steps.get_version.outputs.version }}-windows.exe)" >> CHANGELOG.md
@@ -251,18 +245,12 @@ jobs:
           echo "" >> CHANGELOG.md
           echo "## English | [中文](#多账号浏览器-v${{ steps.get_version.outputs.version }})" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
-          echo "### Updates" >> CHANGELOG.md
-          echo "- Optimized log output, reducing unnecessary console information" >> CHANGELOG.md
-          echo "- Reduced unnecessary log output in browser adapters (Chrome, Edge, Firefox, Safari)" >> CHANGELOG.md
-          echo "- Reduced unnecessary log output in browser manager" >> CHANGELOG.md
-          echo "- Fixed issue where frontend couldn't retrieve browser instance status constants" >> CHANGELOG.md
-          echo "- Added 'get-instance-status-constants' to valid channels whitelist in preload.js" >> CHANGELOG.md
-          echo "- Added default browser instance status constants in app.js" >> CHANGELOG.md
-          echo "- Fixed browser instance startup and shutdown issues" >> CHANGELOG.md
-          echo "- Fixed browser instance status detection logic" >> CHANGELOG.md
-          echo "- Improved UI with light blue background for running configurations" >> CHANGELOG.md
-          echo "- Fixed Cookie management connection issues" >> CHANGELOG.md
-          echo "- Ensured browsers start with the configured start page" >> CHANGELOG.md
+          echo "### Updates" >> CHANGELOG.md       
+          echo "- Improved fingerprint protection with consistent random seed mechanism" >> CHANGELOG.md
+          echo "- Enhanced Canvas, Audio and WebRTC fingerprint protection" >> CHANGELOG.md
+          echo "- Fixed RECTS protection configuration saving and loading" >> CHANGELOG.md
+          echo "- Added automatic random seed generation for new profiles" >> CHANGELOG.md
+          echo "- Improved fingerprint consistency across multiple browser instances" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           echo "### Downloads" >> CHANGELOG.md
           echo "- [Windows Version](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/multi-account-browser-${{ steps.get_version.outputs.version }}-windows.exe)" >> CHANGELOG.md

@@ -193,8 +193,9 @@ class BrowserManager extends EventEmitter {
       );
       
       // 如果配置了指纹保护，应用指纹保护设置
-      if (profile.fingerprintProtection && profile.fingerprintProtection.enabled) {
+      if ((profile.fingerprint && profile.fingerprint.enabled) || (profile.fingerprintProtection && profile.fingerprintProtection.enabled)) {
         // 对于 Playwright，我们传入的是 browserContext 而不是 page
+        console.log(`[指纹防护] 在浏览器管理器中应用指纹防护设置`);
         await adapter.applyFingerprintProtection(browser, profile);
       }
       

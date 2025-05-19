@@ -1019,9 +1019,10 @@ const CookieManagerPage = {
           // 等待一下，确保 Cookie 设置完成
           await new Promise(resolve => setTimeout(resolve, 1000));
           
-          // 强制刷新 Cookie 列表
-          console.log('强制刷新 Cookie 列表...');
-          await this.loadCookies(true); // 强制刷新，确保显示最新数据
+          // 不再重新加载 Cookie 列表，因为这可能导致网站重新设置 Cookie
+          // 我们将在下面直接更新内存中的 Cookie 列表
+          // console.log('强制刷新 Cookie 列表...');
+          // await this.loadCookies(true); // 强制刷新，确保显示最新数据
           
           // 如果是编辑模式，尝试在列表中找到并更新当前 Cookie
           if (this.isEditMode) {
@@ -1059,17 +1060,13 @@ const CookieManagerPage = {
     async saveStorageItem() {
       try {
         this.saving = true;
-        console.log(`准备保存存储项: ${this.currentStorageItem.key} = ${this.currentStorageItem.value}`);
-        
         // 先启动浏览器实例，确保可以连接
-        console.log('确保浏览器实例已启动...');
         await window.ipcRenderer.invoke('launch-browser', this.selectedProfileId);
         
         // 等待一下，确保浏览器实例完全启动
         await new Promise(resolve => setTimeout(resolve, 1000));
         
         // 获取当前存储数据
-        console.log('获取当前存储数据...');
         const storageData = await window.ipcRenderer.invoke(
           'get-local-storage', 
           this.selectedProfileId, 
@@ -1077,15 +1074,10 @@ const CookieManagerPage = {
           this.storageType === 'localStorage' ? 'localStorage' : 'sessionStorage'
         );
         
-        console.log('获取到当前存储数据:', storageData);
-        
         // 更新或添加项
         storageData[this.currentStorageItem.key] = this.currentStorageItem.value;
         
-        console.log('更新后的存储数据:', storageData);
-        
         // 保存回存储
-        console.log('保存更新后的存储数据...');
         const result = await window.ipcRenderer.invoke(
           'set-local-storage', 
           this.selectedProfileId, 
@@ -1094,16 +1086,12 @@ const CookieManagerPage = {
           this.storageType === 'localStorage' ? 'localStorage' : 'sessionStorage'
         );
         
-        console.log('保存存储项结果:', result);
-        
         // 检查结果是否是错误对象
         if (result && typeof result === 'object' && result.code) {
           // 如果是错误对象，显示错误信息
-          console.error('返回了错误对象:', result);
           
           if (result.code === 'BROWSER_CLOSED') {
             // 如果浏览器已关闭，尝试启动浏览器
-            console.log('浏览器已关闭，尝试启动浏览器...');
             await window.ipcRenderer.invoke('launch-browser', this.selectedProfileId);
             
             // 等待浏览器启动
@@ -1231,8 +1219,9 @@ const CookieManagerPage = {
       // 等待一下，确保存储设置完成
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // 重新加载存储数据以确保显示最新状态
-      await this.loadCookies(true);
+      // 不再重新加载存储数据，因为这可能导致网站重新设置存储项
+      // 我们已经在上面更新了内存中的存储项，这已经足够
+      // await this.loadCookies(true);
       this.$message.success('存储项保存成功');
     },
     
@@ -1242,9 +1231,6 @@ const CookieManagerPage = {
       const index = this.storageItems.findIndex(i => i.key === item.key);
       if (index > -1) {
         this.storageItems.splice(index, 1);
-        console.log(`从本地数组中移除了存储项 ${item.key}`);
-      } else {
-        console.warn(`在本地数组中找不到存储项 ${item.key}`);
       }
       
       // 从配置文件中删除存储项
@@ -1275,11 +1261,9 @@ const CookieManagerPage = {
               const itemIndex = domainStorage.items.findIndex(i => i.key === item.key);
               if (itemIndex >= 0) {
                 domainStorage.items.splice(itemIndex, 1);
-                console.log(`从配置文件中移除了存储项 ${item.key}`);
                 
                 // 保存配置文件
                 await window.ipcRenderer.invoke('save-profile', profile);
-                console.log('配置文件已更新');
               }
             }
           }
@@ -1291,8 +1275,9 @@ const CookieManagerPage = {
       // 等待一下，确保存储更改完成
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // 重新加载存储数据以确保显示最新状态
-      await this.loadCookies(true);
+      // 不再重新加载存储数据，因为这可能导致网站重新设置存储项
+      // 我们已经在上面从内存中移除了该存储项，这已经足够
+      // await this.loadCookies(true);
       
       this.$message.success('存储项删除成功');
     },
@@ -1301,7 +1286,6 @@ const CookieManagerPage = {
     async handleClearSuccess() {
       // 清空本地数组
       this.storageItems = [];
-      console.log('已清空本地存储项数组');
       
       // 从配置文件中清除存储项
       try {
@@ -1324,11 +1308,9 @@ const CookieManagerPage = {
             if (domainStorageIndex >= 0) {
               // 移除整个域名的存储记录
               profile.storage.splice(domainStorageIndex, 1);
-              console.log(`从配置文件中移除了域名 ${domain} 的所有 ${this.storageType} 存储项`);
               
               // 保存配置文件
               await window.ipcRenderer.invoke('save-profile', profile);
-              console.log('配置文件已更新');
             }
           }
         }
@@ -1430,8 +1412,9 @@ const CookieManagerPage = {
             // 不需要再调用 saveCookiesToProfile，因为我们已经直接从配置文件中删除了 Cookie
             // 并且已经保存了更新后的配置文件
             
-            // 重新加载 Cookie 列表，确保显示最新数据
-            await this.loadCookies();
+            // 不再重新加载 Cookie 列表，因为这可能导致网站重新设置 Cookie
+            // 我们已经在上面从内存中移除了该 Cookie，这已经足够
+            // await this.loadCookies();
             
             this.$message.success('Cookie 删除成功');
           } catch (error) {

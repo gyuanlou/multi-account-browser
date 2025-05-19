@@ -209,236 +209,92 @@ class SafariAdapter extends BrowserAdapter {
   
   /**
    * 应用指纹保护
-   * @param {Object} page 页面实例
+   * @param {Object} context 浏览器上下文
    * @param {Object} profile 配置文件
    * @returns {Promise<Object>} 应用结果
    */
-  async applyFingerprintProtection(page, profile) {
+  async applyFingerprintProtection(context, profile) {
     try {
-      const fingerprintSettings = profile.fingerprintProtection || {};
+      // 调用父类的实现
+      await BrowserAdapter.prototype.applyFingerprintProtection.call(this, context, profile);
       
-      if (!fingerprintSettings.enabled) {
-        return { success: true, message: '指纹保护未启用' };
-      }
-      
-      // 注入指纹保护脚本
-      await page.addInitScript(({ settings }) => {
-        // Canvas 指纹保护
-        if (settings.canvas !== 'off') {
-          const originalGetContext = HTMLCanvasElement.prototype.getContext;
-          HTMLCanvasElement.prototype.getContext = function(type, ...args) {
-            const context = originalGetContext.apply(this, [type, ...args]);
-            if (context && (type === '2d' || type.includes('webgl'))) {
-              const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
-              this.toDataURL = function(...args) {
-                const result = originalToDataURL.apply(this, args);
-                // 添加随机噪点
-                return result.replace(/.$/, Math.floor(Math.random() * 10));
-              };
-            }
-            return context;
-          };
-        }
+      // Safari 特有的额外设置
+      if ((profile.fingerprint && profile.fingerprint.enabled) || 
+          (profile.fingerprintProtection && profile.fingerprintProtection.enabled)) {
         
-        // WebRTC 保护
-        if (settings.webRTC === 'disabled') {
-          Object.defineProperty(window, 'RTCPeerConnection', {
-            value: undefined,
-            writable: false
-          });
-        }
-        
-        // 用户代理修改
-        if (settings.userAgent) {
-          Object.defineProperty(navigator, 'userAgent', {
-            value: settings.userAgent,
-            writable: false
-          });
-          
-          // Safari 特有：修改 appVersion 和 vendor
-          Object.defineProperty(navigator, 'appVersion', {
-            value: settings.userAgent.replace(/^.*?\//,''),
-            writable: false
-          });
-          
+        // 注入 Safari 特有的指纹防护代码
+        await context.addInitScript(function() {
+          // 修改 Safari 特有属性
           Object.defineProperty(navigator, 'vendor', {
-            value: 'Apple Computer, Inc.',
-            writable: false
+            get: function() { return 'Apple Computer, Inc.'; }
           });
-        }
-      }, { settings: fingerprintSettings });
-      
-      return { success: true, message: '已应用指纹保护设置' };
-    } catch (error) {
-      console.error('应用指纹保护失败:', error);
-      return { success: false, message: `应用指纹保护失败: ${error.message}` };
-    }
-  }
-  
-  /**
-   * 测试指纹保护
-   * @param {Object} browser 浏览器实例
-   * @returns {Promise<Array>} 测试结果
-   */
-  async testFingerprintProtection(browser) {
-    try {
-      // 获取浏览器页面
-      const context = browser.contexts()[0] || await browser.newContext();
-      const page = context.pages()[0] || await context.newPage();
-      
-      // 创建一个本地测试页面
-      await page.setContent(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>指纹防护测试</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            .result { margin: 10px 0; padding: 10px; border: 1px solid #ddd; }
-            .passed { color: green; }
-            .failed { color: red; }
-          </style>
-        </head>
-        <body>
-          <h1>指纹防护测试</h1>
-          <div id="results"></div>
           
-          <script>
-            // 测试结果数组
-            const testResults = [];
-            
-            // Canvas 指纹测试
-            function testCanvas() {
-              try {
-                const canvas = document.createElement('canvas');
-                canvas.width = 200;
-                canvas.height = 50;
-                const ctx = canvas.getContext('2d');
-                
-                ctx.textBaseline = "top";
-                ctx.font = "14px 'Arial'";
-                ctx.textBaseline = "alphabetic";
-                ctx.fillStyle = "#f60";
-                ctx.fillRect(125, 1, 62, 20);
-                ctx.fillStyle = "#069";
-                ctx.fillText("Hello, world!", 2, 15);
-                
-                // 获取两次数据URL，如果不同则说明有随机化
-                const dataURL1 = canvas.toDataURL();
-                const dataURL2 = canvas.toDataURL();
-                
-                return {
-                  test: 'Canvas 指纹',
-                  passed: dataURL1 !== dataURL2,
-                  details: dataURL1 !== dataURL2 ? 
-                    '通过: Canvas 指纹已被随机化' : 
-                    '失败: Canvas 指纹未被保护'
-                };
-              } catch (e) {
-                return {
-                  test: 'Canvas 指纹',
-                  passed: true,
-                  details: '通过: Canvas API 已被阻止'
-                };
+          // 模拟 Safari 的 ITP (Intelligent Tracking Prevention)
+          const originalCookieDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'cookie');
+          Object.defineProperty(Document.prototype, 'cookie', {
+            get: function() {
+              return originalCookieDesc.get.call(this);
+            },
+            set: function(value) {
+              // 如果是第三方 Cookie，限制其存储时间
+              if (value.includes('expires=') && !document.location.hostname.includes(value.split('=')[0])) {
+                // 将过期时间限制为 7 天
+                const expiresMatch = value.match(/expires=([^;]+)/);
+                if (expiresMatch && expiresMatch[1]) {
+                  const expiresDate = new Date(expiresMatch[1]);
+                  const now = new Date();
+                  const maxExpiry = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7天
+                  
+                  if (expiresDate > maxExpiry) {
+                    value = value.replace(/expires=[^;]+/, `expires=${maxExpiry.toUTCString()}`);
+                  }
+                }
               }
-            }
-            
-            // WebRTC 测试
-            function testWebRTC() {
-              try {
-                const rtcAvailable = typeof window.RTCPeerConnection !== 'undefined';
-                return {
-                  test: 'WebRTC 保护',
-                  passed: !rtcAvailable,
-                  details: !rtcAvailable ? 
-                    '通过: WebRTC API 已被禁用' : 
-                    '失败: WebRTC API 可用，可能泄露真实 IP'
-                };
-              } catch (e) {
-                return {
-                  test: 'WebRTC 保护',
-                  passed: true,
-                  details: '通过: WebRTC API 访问出错，可能已被禁用'
-                };
-              }
-            }
-            
-            // Safari 特有测试：检查浏览器标识
-            function testSafariIdentity() {
-              const isSafari = navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome');
-              const isApple = navigator.vendor === 'Apple Computer, Inc.';
               
-              return {
-                test: 'Safari 标识',
-                passed: isSafari && isApple,
-                details: isSafari && isApple ? 
-                  '通过: 浏览器正确标识为 Safari' : 
-                  '失败: 浏览器未正确标识为 Safari'
-              };
-            }
-            
-            // ITP (Intelligent Tracking Prevention) 测试
-            function testITP() {
-              // 检查 Safari 的 ITP 是否可能生效
-              // 注意：这只是一个简单的启发式检查，不是 100% 准确
-              const hasLocalStorage = typeof localStorage !== 'undefined';
-              const hasSessionStorage = typeof sessionStorage !== 'undefined';
-              
-              // 在 Safari 的严格隐私模式下，第三方 cookie 会被阻止
-              // 我们可以检查是否可以设置 cookie
-              document.cookie = "testCookie=1; path=/";
-              const canSetCookie = document.cookie.includes("testCookie=1");
-              
-              return {
-                test: '隐私保护 (ITP)',
-                passed: hasLocalStorage && hasSessionStorage && canSetCookie,
-                details: hasLocalStorage && hasSessionStorage && canSetCookie ? 
-                  '通过: Safari 允许存储，但可能启用了 ITP' : 
-                  '警告: Safari 可能限制了存储功能，这可能影响某些网站'
-              };
-            }
-            
-            // 运行所有测试
-            testResults.push(testCanvas());
-            testResults.push(testWebRTC());
-            testResults.push(testSafariIdentity());
-            testResults.push(testITP());
-            
-            // 显示结果
-            const resultsDiv = document.getElementById('results');
-            testResults.forEach(result => {
-              const resultDiv = document.createElement('div');
-              resultDiv.className = \`result \${result.passed ? 'passed' : 'failed'}\`;
-              resultDiv.innerHTML = 
-              \`<h3>\${result.test}: \${result.passed ? '通过' : '未通过'}</h3>
-              <p>\${result.details}</p>\`;
-              resultsDiv.appendChild(resultDiv);
+              originalCookieDesc.set.call(this, value);
+            },
+            enumerable: true,
+            configurable: true
+          });
+          
+          // 模拟 Safari 的隐私模式
+          Object.defineProperty(navigator, 'maxTouchPoints', {
+            get: function() { return 0; }
+          });
+        });
+        
+        // 如果有用户代理设置，进行额外设置
+        if (profile.fingerprint?.userAgent) {
+          await context.addInitScript(function(ua) {
+            Object.defineProperty(navigator, 'userAgent', {
+              get: function() { return ua; }
             });
             
-            // 将结果保存到全局变量
-            window.fingerprintTestResults = testResults;
-          </script>
-        </body>
-        </html>
-      `);
+            // Safari 特有：修改 appVersion
+            Object.defineProperty(navigator, 'appVersion', {
+              get: function() { return ua.replace(/^.*?\//,''); }
+            });
+            
+            // Safari 特有：修改 platform
+            Object.defineProperty(navigator, 'platform', {
+              get: function() { 
+                if (ua.includes('Mac')) return 'MacIntel';
+                if (ua.includes('iPhone') || ua.includes('iPad')) return 'iPhone';
+                return 'MacIntel'; // 默认为 Mac
+              }
+            });
+          }, profile.fingerprint.userAgent);
+        }
+      }
       
-      // 等待测试完成
-      await page.waitForFunction('window.fingerprintTestResults && window.fingerprintTestResults.length > 0');
-      
-      // 获取测试结果
-      const testResults = await page.evaluate(() => window.fingerprintTestResults);
-      
-      return testResults;
+      return { success: true, message: '已应用 Safari 指纹保护设置' };
     } catch (error) {
-      console.error('测试指纹保护失败:', error);
-      return [{
-        test: '测试执行',
-        passed: false,
-        details: `测试过程中出错: ${error.message}`
-      }];
+      console.error('应用 Safari 指纹保护失败:', error);
+      return { success: false, message: `应用 Safari 指纹保护失败: ${error.message}` };
     }
   }
   
+
   /**
    * 测试代理
    * @param {Object} proxyConfig 代理配置

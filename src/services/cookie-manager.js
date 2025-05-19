@@ -462,6 +462,24 @@ class CookieManager {
         if (browser.contexts && browser.contexts().length > 0) {
           // 如果是浏览器对象，使用第一个 context 删除 cookie
           const context = browser.contexts()[0];
+          
+          // 创建一个过期的 Cookie 来覆盖现有的 Cookie
+          // 这是一种更可靠的删除 Cookie 的方法
+          const expiredCookie = {
+            name: name,
+            value: '',
+            domain: cookieToDelete.domain,
+            path: cookieToDelete.path,
+            expires: 0,  // 过期时间设置为过去的时间，强制过期
+            httpOnly: cookieToDelete.httpOnly,
+            secure: cookieToDelete.secure,
+            sameSite: cookieToDelete.sameSite
+          };
+          
+          await context.addCookies([expiredCookie]);
+          console.log(`已设置过期 Cookie 来删除 ${name}`);
+          
+          // 再次清除所有匹配的 Cookie
           await context.clearCookies({
             name: name,
             domain: cookieToDelete.domain,
@@ -1326,16 +1344,17 @@ async clearCookies(profileId, url = null) {
         console.log('当前存储内容:', JSON.stringify(currentStorage, null, 2));
         
         // 设置新数据 - 使用更可靠的方法
-        await page.evaluate(({ type, data }) => {
+        await page.evaluate(({ type, data, isDeleteOperation }) => {
           try {
             const storage = type === 'localStorage' ? localStorage : sessionStorage;
             
-            // 先清除现有存储
-            storage.clear();
-            console.log('清除现有存储成功');
+            // 检查是否是删除操作
+            const isDelete = isDeleteOperation || Object.keys(data).length === 0;
             
-            // 等待一下，确保清除操作完成
-            setTimeout(() => {}, 100);
+            if (isDelete) {
+              // 如果是删除操作，先清除现有存储
+              storage.clear();
+            }
             
             // 逐个设置新数据，并验证每个设置是否成功
             const results = {};
@@ -1347,11 +1366,13 @@ async clearCookies(profileId, url = null) {
                   // 设置项
                   storage.setItem(key, data[key]);
                   
+                  // 多次设置，确保成功
+                  storage.setItem(key, data[key]);
+                  
                   // 验证设置是否成功
                   const storedValue = storage.getItem(key);
                   if (storedValue === data[key]) {
                     results[key] = storedValue;
-                    console.log(`成功设置存储项: ${key} = ${storedValue}`);
                   } else {
                     failures.push(key);
                     console.error(`设置存储项失败: ${key}, 期望值: ${data[key]}, 实际值: ${storedValue}`);
@@ -1363,22 +1384,18 @@ async clearCookies(profileId, url = null) {
               }
             }
             
-            console.log(`共设置了 ${Object.keys(results).length} 个存储项，失败 ${failures.length} 个`);
-            
             // 再次验证所有存储内容
             const finalVerification = {};
             for (let i = 0; i < storage.length; i++) {
               const key = storage.key(i);
               finalVerification[key] = storage.getItem(key);
             }
-            
-            console.log('最终存储内容:', JSON.stringify(finalVerification));
             return { success: failures.length === 0, results: finalVerification, failures };
           } catch (e) {
             console.error('在页面中设置存储失败:', e);
             throw e;
           }
-        }, { type: storageType, data });
+        }, { type: storageType, data, isDeleteOperation: Object.keys(data).length === 0 });
         
         // 获取设置结果
         const setResult = await page.evaluate((type) => {

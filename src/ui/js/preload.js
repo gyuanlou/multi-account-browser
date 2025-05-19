@@ -64,7 +64,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
       // 代理和指纹管理
       'test-proxy',
       'generate-random-fingerprint',
-      'test-fingerprint-protection',
+      'open-url-in-browser',
       
       // 地理位置数据
       'get-countries',
@@ -131,6 +131,15 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
       'get-script-by-id',
       'save-script',
       'delete-script',
+      
+      // 指纹测试平台
+      'get-test-platforms',
+      'run-fingerprint-test',
+      'run-fingerprint-comparison-test',
+      'get-recent-test-results',
+      'get-recent-comparison-results',
+      'open-url-in-browser',
+      'open-external-url',
       
       // 性能优化
       'get-resource-usage',
