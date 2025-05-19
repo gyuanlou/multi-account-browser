@@ -1224,7 +1224,7 @@ function registerIPCHandlers() {
           return fingerprintTestManager.getAllPlatforms();
         });
         
-        // 打开URL在浏览器中 - 先关闭再重新启动浏览器
+        // 打开URL在浏览器中 - 使用现有实例或启动新实例
         ipcMain.handle('open-url-in-browser', async (event, profileId, url) => {
           console.log('尝试在浏览器中打开URL:', url, '配置ID:', profileId);
           
@@ -1235,26 +1235,97 @@ function registerIPCHandlers() {
               throw new Error('找不到配置信息');
             }
             
-            // 先关闭现有实例
-            const instance = browserManager.getRunningInstance(profileId);
-            if (instance) {
-              await browserManager.closeBrowser(profileId);
-              // 等待一小段时间确保浏览器已关闭
-              await new Promise(resolve => setTimeout(resolve, 1000));
+            // 获取完整的浏览器实例信息（不仅仅是browser对象）
+            // browserManager.browserInstances 存储了完整的实例信息
+            const fullInstance = browserManager.browserInstances.get(profileId);
+            
+            // 直接检查实例状态是否为 'running'
+            if (fullInstance && fullInstance.browser && fullInstance.status === 'running') {
+              console.log(`实例已经启动，尝试在现有实例中打开URL: ${url}`);
+              
+              try {
+                // 在现有实例中打开新标签页
+                console.log(`尝试在现有实例中打开URL: ${url}`);
+                
+                // 获取浏览器适配器
+                const adapter = fullInstance.adapter;
+                if (!adapter) {
+                  throw new Error('浏览器适配器不存在');
+                }
+                
+                console.log(`使用 ${adapter.constructor.name} 打开URL`);
+                
+                // 使用适配器获取浏览器
+                const browser = fullInstance.browser;
+                
+                if (!browser) {
+                  throw new Error('浏览器实例不存在');
+                }
+                
+                // 检查浏览器结构
+                console.log('浏览器类型:', typeof browser);
+                
+                // 如果适配器有 navigateToUrl 方法，直接使用
+                if (typeof adapter.navigateToUrl === 'function') {
+                  console.log('使用适配器的 navigateToUrl 方法');
+                  
+                  // 尝试获取上下文
+                  let context;
+                  try {
+                    // 如果有多个上下文，使用第一个
+                    if (browser.contexts && browser.contexts.length > 0) {
+                      context = browser.contexts[0];
+                    }
+                    // 如果没有上下文属性，尝试使用整个浏览器
+                    else {
+                      context = browser;
+                    }
+                    
+                    // 使用适配器的 navigateToUrl 方法
+                    await adapter.navigateToUrl(context, url, { waitUntil: 'networkidle' });
+                    console.log('成功在现有实例中打开URL');
+                  } catch (navError) {
+                    console.error('使用 navigateToUrl 方法失败:', navError);
+                    throw navError;
+                  }
+                }
+                // 如果没有 navigateToUrl 方法，尝试使用标准 Playwright 方法
+                else {
+                  console.log('适配器没有 navigateToUrl 方法，尝试使用标准 Playwright 方法');
+                  
+                  // 尝试获取现有页面
+                  const pages = browser.contexts && browser.contexts[0] && typeof browser.contexts[0].pages === 'function' ?
+                    await browser.contexts[0].pages() :
+                    (typeof browser.pages === 'function' ? await browser.pages() : []);
+                  
+                  if (pages && pages.length > 0) {
+                    // 使用现有页面
+                    const page = pages[0];
+                    console.log('使用现有页面导航到URL');
+                    await page.goto(url, { waitUntil: 'networkidle' });
+                    console.log('成功在现有实例中打开URL');
+                  } else {
+                    throw new Error('没有可用的页面');
+                  }
+                }
+                
+              } catch (navError) {
+                console.error(`在现有实例中打开URL失败，尝试重新启动:`, navError);
+                
+                // 如果在现有实例中打开失败，则关闭并重新启动
+                await browserManager.closeBrowser(profileId);
+                // 等待一小段时间确保浏览器已关闭
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // 启动浏览器
+                await browserManager.launchBrowser(profileId, { startUrl: url });
+              }
+            } else {
+              console.log(`实例未启动，启动新实例并打开URL: ${url}`);
+              
+              // 启动浏览器
+              await browserManager.launchBrowser(profileId, { startUrl: url });
             }
-            
-            // 修改配置的启动URL
-            const updatedProfile = { ...profile };
-            if (!updatedProfile.startup) {
-              updatedProfile.startup = {};
-            }
-            updatedProfile.startup.startUrl = url;
-            
-            // 保存更新后的配置
-            await profileManager.saveProfile(updatedProfile);
-            
-            // 启动浏览器
-            await browserManager.launchBrowser(profileId, { startUrl: url });
             
             return { success: true };
           } catch (error) {
@@ -1303,11 +1374,20 @@ function registerIPCHandlers() {
   
   // 应用信息
   ipcMain.handle('get-app-info', () => {
+    // 从 package.json 中获取作者信息
+    const packageJson = require('./package.json');
+    const author = packageJson.author || {
+      name: 'Multi-Account Browser Team',
+      email: 'gyuanlou@gmail.com',
+      url: 'https://github.com/gyuanlou/multi-account-browser'
+    };
+    
     return {
       version: app.getVersion(),
       platform: process.platform,
       electron: process.versions.electron,
-      chrome: process.versions.chrome
+      chrome: process.versions.chrome,
+      author: author
     };
   });
   

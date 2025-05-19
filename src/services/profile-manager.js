@@ -121,7 +121,6 @@ class ProfileManager {
    * @returns {Object} 保存后的配置文件
    */
   saveProfile(profile) {
-    console.log('开始保存配置文件:', profile);
     
     try {
       const profiles = this.getAllProfiles();

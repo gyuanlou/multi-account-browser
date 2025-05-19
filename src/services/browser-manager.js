@@ -481,10 +481,12 @@ class BrowserManager extends EventEmitter {
     
     // 发送状态变化事件
     try {
-      const { getElectron } = require('./electron-utils');
-      const { webContents } = getElectron().BrowserWindow.getAllWindows()[0];
-      if (webContents) {
-        webContents.send('instance-status-changed', {
+      // 直接使用 Electron API
+      const { BrowserWindow } = require('electron');
+      const mainWindow = BrowserWindow.getAllWindows()[0];
+      
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('instance-status-changed', {
           profileId,
           oldStatus,
           newStatus: status,

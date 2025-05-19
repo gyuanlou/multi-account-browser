@@ -224,6 +224,7 @@ const SettingsPage = {
             <p>平台: {{ appInfo.platform }}</p>
             <p>Electron: {{ appInfo.electron }}</p>
             <p>Chrome: {{ appInfo.chrome }}</p>
+            <p>github: <a href="javascript:void(0)" @click="openGithub">{{ appInfo.author ? appInfo.author.email : 'gyuanlou@gmail.com' }}</a></p>
             
             <el-divider></el-divider>
             
@@ -515,6 +516,57 @@ const SettingsPage = {
         }
       } catch (error) {
         console.error('获取应用信息失败:', error);
+      }
+    },
+    
+    // 打开 GitHub 链接
+    async openGithub() {
+      const url = (this.appInfo && this.appInfo.author && this.appInfo.author.url) 
+        ? this.appInfo.author.url 
+        : 'https://github.com/gyuanlou/multi-account-browser';
+      
+      try {
+        // 获取所有配置文件
+        const profiles = await window.ipcRenderer.invoke('get-profiles');
+        
+        if (profiles && profiles.length > 0) {
+          // 弹出选择对话框
+          this.$confirm('请选择如何打开 GitHub 链接', '打开 GitHub', {
+            confirmButtonText: '使用多账户浏览器',
+            cancelButtonText: '使用默认浏览器',
+            distinguishCancelAndClose: true,
+            type: 'info'
+          }).then(() => {
+
+             // 用户选择使用多账户浏览器
+              // 直接使用第一个配置
+              const defaultProfile = profiles[0];
+              this.$message.info(`正在使用配置 "${defaultProfile.name}" 打开链接...`);
+              
+              window.ipcRenderer.invoke('open-url-in-browser', defaultProfile.id, url)
+                .then(() => {
+                  this.$message.success('正在打开 GitHub 链接...');
+                })
+                .catch(error => {
+                  this.$message.error('打开链接失败: ' + error.message);
+                });
+          
+          }).catch(action => {
+            if (action === 'cancel') {
+               // 使用默认浏览器打开
+              window.ipcRenderer.invoke('open-external-url', url)
+              .catch(error => {
+                this.$message.error('打开 GitHub 链接失败: ' + error.message);
+              });
+            }
+          });
+        } else {
+          // 没有配置文件，使用默认浏览器
+          this.$message.warning('没有可用的浏览器配置，将使用系统默认浏览器');
+          window.ipcRenderer.invoke('open-external-url', url);
+        }
+      } catch (error) {
+        this.$message.error('打开 GitHub 链接失败: ' + error.message);
       }
     },
     
