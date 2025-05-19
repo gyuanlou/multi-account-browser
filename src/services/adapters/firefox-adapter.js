@@ -104,7 +104,11 @@ class FirefoxAdapter extends BrowserAdapter {
       '--wait-for-browser',
       '--foreground',
       '--start-debugger-server', `${debugPort}`,
-      '-new-instance'
+      '-new-instance',
+      // 反自动化检测参数
+      '--disable-blink-features=AutomationControlled',
+      '--disable-infobars',
+      '--no-sandbox'
     ];
     
     // 应用指纹保护设置
@@ -149,6 +153,14 @@ class FirefoxAdapter extends BrowserAdapter {
         'extensions.pocket.enabled': false,
         
         // 禁用自动填充
+        
+        // 反自动化检测设置
+        'dom.webdriver.enabled': false,  // 禁用 WebDriver 标志
+        'dom.automation': false,  // 禁用自动化标志
+        'general.useragent.override': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0',  // 设置用户代理
+        'privacy.resistFingerprinting': true,  // 启用指纹防护
+        'network.http.referer.spoofSource': true,  // 欺骗引用来源
+        'media.navigator.enabled': false,  // 禁用媒体设备访问
         'signon.autofillForms': false,
         'signon.rememberSignons': false,
         

@@ -150,10 +150,176 @@ class BrowserAdapter {
         }, 2000);
       `;
       
+      // 创建反自动化检测脚本
+      const antiAutomationScript = `
+        // 隐藏自动化标志
+        (function() {
+          // 移除浏览器顶部的自动化控制通知条
+          if (window.chrome) {
+            // 直接删除所有包含“自动化”或“Automation”的通知条
+            const removeAutomationBar = () => {
+              const divs = document.querySelectorAll('div');
+              for (const div of divs) {
+                if (div.innerText && (
+                    div.innerText.includes('正在受到自动化软件的控制') || 
+                    div.innerText.includes('Chrome is being controlled by automated test software') ||
+                    div.innerText.includes('自动化') ||
+                    div.innerText.includes('automation') ||
+                    div.innerText.includes('Automation')
+                  )) {
+                  div.remove();
+                  console.log('已移除自动化控制通知条');
+                }
+              }
+            };
+            
+            // 页面加载后立即执行
+            removeAutomationBar();
+            
+            // 定时检查并移除通知条
+            setInterval(removeAutomationBar, 1000);
+            
+            // 使用 MutationObserver 监听 DOM 变化，即时移除新出现的通知条
+            const observer = new MutationObserver((mutations) => {
+              for (const mutation of mutations) {
+                if (mutation.addedNodes.length) {
+                  removeAutomationBar();
+                }
+              }
+            });
+            
+            // 监听整个文档的变化
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+          }
+          
+          // 隐藏 webdriver 标志
+          Object.defineProperty(navigator, 'webdriver', {
+            get: () => false,
+            configurable: true
+          });
+          
+          // 隐藏 Chrome 自动化标志
+          if (window.chrome) {
+            // 备份原始 chrome 对象
+            const _chrome = { ...window.chrome };
+            
+            // 重写 chrome 对象
+            window.chrome = {
+              ..._chrome,
+              app: {
+                ..._chrome.app,
+                isInstalled: true
+              },
+              webstore: {
+                ..._chrome.webstore,
+                onInstallStageChanged: {},
+                onDownloadProgress: {}
+              },
+              runtime: {
+                ..._chrome.runtime,
+                connect: function() {
+                  return { disconnect: function() {} };
+                }
+              }
+            };
+          }
+          
+          // 隐藏 Playwright 特有的属性
+          delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
+          delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
+          delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
+          
+          // 修改 Permissions API
+          if (navigator.permissions) {
+            const originalQuery = navigator.permissions.query;
+            navigator.permissions.query = function(parameters) {
+              if (parameters.name === 'notifications') {
+                return Promise.resolve({ state: Notification.permission });
+              }
+              return originalQuery.apply(this, arguments);
+            };
+          }
+          
+          // 修改 plugins 和 mimeTypes
+          Object.defineProperty(navigator, 'plugins', {
+            get: function() {
+              // 模拟真实浏览器的插件
+              const plugins = [
+                [
+                  {
+                    description: "Portable Document Format",
+                    filename: "internal-pdf-viewer",
+                    name: "Chrome PDF Plugin"
+                  }
+                ],
+                [
+                  {
+                    description: "Portable Document Format",
+                    filename: "internal-pdf-viewer",
+                    name: "Chrome PDF Viewer"
+                  }
+                ],
+                [
+                  {
+                    description: "Native Client",
+                    filename: "internal-nacl-plugin",
+                    name: "Native Client"
+                  }
+                ]
+              ];
+              
+              // 创建一个类似真实浏览器的插件对象
+              return plugins;
+            }
+          });
+          
+          // 修改 languages
+          Object.defineProperty(navigator, 'languages', {
+            get: function() {
+              return ['zh-CN', 'zh', 'en-US', 'en'];
+            }
+          });
+          
+          // 修改 userAgent
+          if (!navigator.userAgent.includes('Chrome')) {
+            Object.defineProperty(navigator, 'userAgent', {
+              get: function() {
+                return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36';
+              }
+            });
+          }
+          
+          // 使用 Proxy 隐藏自动化特征
+          const originalHasOwnProperty = Object.prototype.hasOwnProperty;
+          Object.prototype.hasOwnProperty = function(property) {
+            if (property === 'webdriver') {
+              return false;
+            }
+            return originalHasOwnProperty.apply(this, arguments);
+          };
+          
+          // 隐藏自动化相关的全局变量
+          window.navigator.automation = undefined;
+          
+          // 修改 navigator.platform
+          Object.defineProperty(navigator, 'platform', {
+            get: function() {
+              return 'Win32';
+            }
+          });
+          
+          console.log('增强版反自动化检测脚本已激活');
+        })();
+      `;
+      
       // 在现有页面上注入脚本
       const pages = context.pages();
       for (const page of pages) {
-        // 先注入配置
+        // 先注入反自动化检测脚本
+        await page.addInitScript(antiAutomationScript);
+        console.log('已注入反自动化检测脚本');
+        
+        // 然后注入指纹配置
         await page.addInitScript(function(config) {
           window.__FINGERPRINT_CONFIG__ = config;
           console.log('指纹防护配置已注入:', config);
@@ -170,7 +336,11 @@ class BrowserAdapter {
       // 对新页面进行注入
       context.on('page', async page => {
         try {
-          // 先注入配置
+          // 先注入反自动化检测脚本
+          await page.addInitScript(antiAutomationScript);
+          console.log('已在新页面上注入反自动化检测脚本');
+          
+          // 然后注入指纹配置
           await page.addInitScript(function(config) {
             window.__FINGERPRINT_CONFIG__ = config;
             console.log('指纹防护配置已注入:', config);
@@ -182,8 +352,8 @@ class BrowserAdapter {
           // 再注入防护脚本
           await page.addInitScript({ path: scriptPath });
           console.log(`[指纹防护] 已在新页面上注入${useBraveStyle ? 'Brave风格' : '标准'}指纹防护脚本`);
-        } catch (error) {
-          console.error(`[指纹防护] 注入指纹防护脚本失败:`, error);
+        } catch (e) {
+          console.error(`[指纹防护] 在新页面上注入脚本失败:`, e);
         }
       });
       

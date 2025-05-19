@@ -90,7 +90,19 @@ class SafariAdapter extends BrowserAdapter {
       headless: false,
       executablePath: this.getBrowserPath(),
       acceptDownloads: true, // 允许下载文件
-      downloadsPath: downloadPath // 设置下载路径
+      downloadsPath: downloadPath, // 设置下载路径
+      
+      // 添加反自动化检测设置
+      ignoreHTTPSErrors: true, // 忽略 HTTPS 错误
+      bypassCSP: true, // 绕过内容安全策略
+      permissions: ['geolocation', 'notifications'], // 预先授予权限，避免提示
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.4 Safari/605.1.15', // 设置用户代理
+      viewport: { width: 1280, height: 800 }, // 设置默认视窗大小
+      locale: 'zh-CN', // 设置语言
+      timezoneId: 'Asia/Shanghai', // 设置时区
+      deviceScaleFactor: 1, // 设置设备缩放比例
+      isMobile: false, // 非移动设备
+      hasTouch: false // 禁用触摸功能
     };
     
     // Safari 需要启用 Web 驱动程序

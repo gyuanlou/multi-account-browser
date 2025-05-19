@@ -142,6 +142,7 @@ class ChromeAdapter extends BrowserAdapter {
       headless: false,
       executablePath: this.getBrowserPath(),
       args: [
+        // 基本参数
         '--no-first-run',
         '--no-default-browser-check',
         `--remote-debugging-port=${debugPort}`,
@@ -166,7 +167,21 @@ class ChromeAdapter extends BrowserAdapter {
         '--metrics-recording-only',
         `--download-default-directory=${downloadPath}`,
         '--enable-local-file-accesses',
-        '--allow-file-access-from-files'
+        '--allow-file-access-from-files',
+        
+        // 添加反自动化检测参数
+        '--disable-blink-features=AutomationControlled',  // 禁用自动化控制标志
+        '--disable-features=IsolateOrigins,site-per-process',  // 禁用站点隔离
+        '--ignore-certificate-errors',  // 忽略证书错误
+        //'--enable-automation',  // 启用自动化，但后面会通过脚本隐藏标志        
+        '--disable-domain-reliability',  // 禁用域可靠性监控
+        '--disable-infobars',  // 禁用信息栏
+        '--no-sandbox',  // 禁用沙盒模式，提高兼容性
+        '--disable-setuid-sandbox',  // 禁用 setuid 沙盒
+        '--disable-web-security',  // 禁用网络安全限制，允许跨域请求
+        '--disable-notifications'  // 禁用通知
+        //'--disable-translate'  // 禁用翻译功能
+        
       ]
     };
     

@@ -131,7 +131,20 @@ class EdgeAdapter extends BrowserAdapter {
         '--allow-file-access-from-files',
         // Edge 特定参数
         '--disable-features=msEdgeTranslate',
-        '--disable-microsoft-update'
+        '--disable-microsoft-update',
+        
+        // 添加反自动化检测参数
+        '--disable-blink-features=AutomationControlled',  // 禁用自动化控制标志
+        '--disable-features=IsolateOrigins,site-per-process',  // 禁用站点隔离
+        '--ignore-certificate-errors',  // 忽略证书错误
+        //'--enable-automation',  // 启用自动化，但后面会通过脚本隐藏标志
+        '--disable-domain-reliability',  // 禁用域可靠性监控
+        '--disable-infobars',  // 禁用信息栏
+        '--no-sandbox',  // 禁用沙盒模式，提高兼容性
+        '--disable-setuid-sandbox',  // 禁用 setuid 沙盒
+        '--disable-web-security',  // 禁用网络安全限制，允许跨域请求
+        '--disable-notifications'  // 禁用通知
+        //'--disable-translate'  // 禁用翻译功能
       ]
     };
     
@@ -310,35 +323,61 @@ class EdgeAdapter extends BrowserAdapter {
    * 应用指纹保护
    * @param {Object} context 浏览器上下文
    * @param {Object} profile 配置文件
-   * @returns {Promise<Object>} 应用结果
+   * @returns {Promise<void>}
    */
   async applyFingerprintProtection(context, profile) {
+    if (!profile.fingerprintProtection || !profile.fingerprintProtection.enabled) {
+      return { success: true, message: '指纹保护未启用' };
+    }
+    
+    // 提取指纹保护设置
+    const fingerprintSettings = {
+      canvas: profile.fingerprint?.canvas || 'off',
+      webRTC: profile.fingerprint?.webRTC || 'default',
+      userAgent: profile.fingerprint?.userAgent || null
+    };
+    
     try {
-      // 调用父类的实现
-      await BrowserAdapter.prototype.applyFingerprintProtection.call(this, context, profile);
-      
-      // Edge 特有的额外设置
-      if ((profile.fingerprint && profile.fingerprint.enabled) || 
-          (profile.fingerprintProtection && profile.fingerprintProtection.enabled)) {
-        
-        // 如果有用户代理设置，进行额外设置
-        if (profile.fingerprint?.userAgent) {
-          await context.addInitScript(function(ua) {
-            Object.defineProperty(navigator, 'userAgent', {
-              get: function() { return ua; }
-            });
-            
-            // Edge 特有属性
-            Object.defineProperty(navigator, 'msLaunchUri', { get: function() { return undefined; } });
-            Object.defineProperty(navigator, 'msMaxTouchPoints', { get: function() { return 0; } });
-          }, profile.fingerprint.userAgent);
+      // 使用 Playwright 的 addInitScript 方法注入指纹保护脚本
+      await context.addInitScript(function(settings) {
+        // Canvas 指纹保护
+        if (settings.canvas !== 'off') {
+          const originalGetContext = HTMLCanvasElement.prototype.getContext;
+          HTMLCanvasElement.prototype.getContext = function(type, ...args) {
+            const context = originalGetContext.apply(this, [type, ...args]);
+            if (context && (type === '2d' || type.includes('webgl'))) {
+              const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+              this.toDataURL = function(...args) {
+                const result = originalToDataURL.apply(this, args);
+                // 添加随机噪点
+                return result.replace(/.$/, Math.floor(Math.random() * 10));
+              };
+            }
+            return context;
+          };
         }
-      }
+        
+        // WebRTC 保护
+        if (settings.webRTC === 'disabled') {
+          Object.defineProperty(window, 'RTCPeerConnection', {
+            value: undefined,
+            writable: false
+          });
+        }
+        
+        // 用户代理修改
+        if (settings.userAgent) {
+          Object.defineProperty(navigator, 'userAgent', {
+            value: settings.userAgent,
+            writable: false
+          });
+        }
+      }, fingerprintSettings);
       
-      return { success: true, message: '已应用 Edge 指纹保护设置' };
+      return { success: true, message: '已应用指纹保护设置' };
     } catch (error) {
-      console.error('应用 Edge 指纹保护失败:', error);
-      return { success: false, message: `应用 Edge 指纹保护失败: ${error.message}` };
+      console.error('应用指纹保护失败:', error);
+      return { success: false, message: `应用指纹保护失败: ${error.message}` };
     }
   }
   
