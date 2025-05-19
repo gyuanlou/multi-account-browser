@@ -131,6 +131,17 @@ const FingerprintTab = {
           </div>
         </el-form-item>
         
+        <el-form-item label="RECTS 矩形防护">
+          <el-switch
+            v-model="localFingerprint.rectsProtection"
+            active-text="启用"
+            inactive-text="禁用">
+          </el-switch>
+          <div class="setting-description">
+            防止网站通过元素位置和大小生成唯一指纹
+          </div>
+        </el-form-item>
+        
         <el-form-item label="时区保护">
           <el-switch
             v-model="localFingerprint.timezoneProtection"
@@ -142,27 +153,70 @@ const FingerprintTab = {
           </div>
         </el-form-item>
         
-        <el-divider content-position="left">指纹测试</el-divider>
-        
-        <el-form-item>
-          <el-button type="primary" @click="generateRandomFingerprint">随机生成所有指纹</el-button>
-          <el-button @click="testFingerprintProtection" :disabled="!profile.id">测试指纹防检测</el-button>
+        <el-form-item label="防护模式">
+          <el-select v-model="localFingerprint.protectionMode" placeholder="选择防护模式">
+            <el-option label="标准模式" value="standard"></el-option>
+            <el-option label="增强模式 (Brave 风格)" value="brave"></el-option>
+          </el-select>
+          <div class="setting-description">
+            增强模式使用 Brave 浏览器风格的防护技术，提供更强大的指纹保护
+          </div>
         </el-form-item>
         
-        <div v-if="testResults" class="fingerprint-test-results">
-          <h3>测试结果</h3>
-          <el-table :data="testResults" border style="width: 100%">
-            <el-table-column prop="test" label="测试项目"></el-table-column>
-            <el-table-column label="结果">
-              <template #default="{ row }">
-                <el-tag :type="row.passed ? 'success' : 'danger'">
-                  {{ row.passed ? '通过' : '未通过' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="details" label="详情"></el-table-column>
-          </el-table>
-        </div>
+        <el-form-item label="随机种子">
+          <el-input-number v-model="localFingerprint.randomSeed" :min="1" :max="2147483647" placeholder="随机种子"></el-input-number>
+          <el-button size="small" @click="updateRandomSeed" style="margin-left: 10px;">重新生成</el-button>
+          <div class="setting-description">
+            随机种子用于生成一致的指纹，确保同一配置文件的所有浏览器实例具有相同的指纹
+          </div>
+        </el-form-item>
+        
+        <el-divider content-position="left">指纹工具</el-divider>
+        
+        <el-form-item>
+          <el-button type="primary" @click="generateRandomFingerprint">随机生成指纹</el-button>
+        </el-form-item>
+        
+        <el-divider content-position="left">指纹测试平台</el-divider>
+        
+        <el-form-item label="测试平台">
+          <el-select v-model="testPlatform" placeholder="选择测试平台">
+            <el-option label="yalala.com" value="yalala"></el-option>
+            <el-option label="amiunique.org" value="amiunique"></el-option>
+            <el-option label="browserleaks.com" value="browserleaks"></el-option>
+            <el-option label="pixelscan.net" value="pixelscan"></el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="openTestPlatform">打开测试平台</el-button>
+        </el-form-item>        
+        <el-form-item v-if="testResults">
+          <el-card class="test-results-card">
+            <div slot="header">
+              <span>测试结果</span>
+            </div>
+            <div v-if="testResults.success" class="test-success">
+              <i class="el-icon-success"></i> 指纹防护有效
+              <div class="test-details">{{ testResults.details }}</div>
+            </div>
+            <div v-else class="test-failure">
+              <i class="el-icon-error"></i> 指纹防护存在问题
+              <div class="test-details">{{ testResults.details }}</div>
+              <div class="test-suggestion">
+                <strong>建议：</strong> {{ testResults.suggestion || '尝试启用增强模式（Brave 风格）以提高防护效果' }}
+              </div>
+            </div>
+          </el-card>
+        </el-form-item>
+        
+        <el-alert
+          v-if="localFingerprint.protectionMode === 'brave'"
+          title="增强模式已启用"
+          type="success"
+          description="您正在使用 Brave 风格的增强防护模式，这将提供更强大的指纹保护功能。"
+          show-icon
+          :closable="false">
+        </el-alert>
       </el-form>
     </div>
   `,
@@ -176,18 +230,27 @@ const FingerprintTab = {
   
   data() {
     return {
-      testResults: null,
       localFingerprint: {
+        userAgent: '',
+        platform: '',
+        language: '',
+        screenWidth: 1920,
+        screenHeight: 1080,
         canvasMode: 'noise',
         webrtcMode: 'public_only',
         fontProtection: true,
         hardwareInfoProtection: true,
         audioContextProtection: true,
         pluginDataProtection: true,
-        timezoneProtection: true
+        rectsProtection: true,
+        timezoneProtection: true,
+        protectionMode: 'standard',
+        randomSeed: Math.floor(Math.random() * 2147483647) // 默认随机种子
       },
       browserType: 'chrome',
-      osType: 'windows'
+      osType: 'windows',
+      testPlatform: 'yalala',
+      testResults: null
     };
   },
   
@@ -212,57 +275,6 @@ const FingerprintTab = {
   },
   
   methods: {
-    async testFingerprintProtection() {
-      if (!this.profile.id) {
-        this.$message.warning('请先保存配置文件');
-        return;
-      }
-      
-      try {
-        this.$message.info('正在测试指纹保护...');
-        const results = await window.ipcRenderer.invoke('test-fingerprint-protection', this.profile.id);
-        this.testResults = [
-          {
-            test: 'Canvas 指纹',
-            passed: results.canvas.protected,
-            details: results.canvas.details
-          },
-          {
-            test: 'WebRTC 保护',
-            passed: results.webrtc.protected,
-            details: results.webrtc.details
-          },
-          {
-            test: '字体指纹',
-            passed: results.fonts.protected,
-            details: results.fonts.details
-          },
-          {
-            test: '硬件信息',
-            passed: results.hardware.protected,
-            details: results.hardware.details
-          },
-          {
-            test: '音频指纹',
-            passed: results.audio.protected,
-            details: results.audio.details
-          },
-          {
-            test: '插件信息',
-            passed: results.plugins.protected,
-            details: results.plugins.details
-          },
-          {
-            test: '时区保护',
-            passed: results.timezone.protected,
-            details: results.timezone.details
-          }
-        ];
-      } catch (error) {
-        this.$message.error('测试指纹保护失败: ' + error.message);
-      }
-    },
-    
     detectBrowserAndOS() {
       const ua = this.localFingerprint.userAgent || '';
       
@@ -298,9 +310,14 @@ const FingerprintTab = {
     
     async generateRandomUserAgent() {
       try {
+        // 确保随机种子存在，如果不存在则生成
+        const seed = this.ensureRandomSeed();
+        
         const options = {
           browser: this.browserType,
-          os: this.osType
+          os: this.osType,
+          // 传递随机种子
+          randomSeed: seed
         };
         
         const fingerprint = await window.ipcRenderer.invoke('generate-random-fingerprint', options);
@@ -311,8 +328,55 @@ const FingerprintTab = {
       }
     },
     
+    /**
+     * 生成随机种子
+     * @returns {number} 生成的随机种子
+     */
+    generateRandomSeed() {
+      // 生成一个新的随机种子
+      const newSeed = Math.floor(Math.random() * 2147483647);
+      this.localFingerprint.randomSeed = newSeed;
+      return newSeed;
+    },
+    
+    /**
+     * 确保随机种子存在，如果不存在则生成
+     * @returns {number} 当前的随机种子
+     */
+    ensureRandomSeed() {
+      if (!this.localFingerprint.randomSeed) {
+        return this.generateRandomSeed();
+      }
+      return this.localFingerprint.randomSeed;
+    },
+    
+    /**
+     * 更新随机种子并重新生成指纹
+     */
+    async updateRandomSeed() {
+      try {
+        // 生成新的随机种子
+        const newSeed = Math.floor(Math.random() * 2147483647);
+        this.localFingerprint.randomSeed = newSeed;
+        this.$message.success('已生成新的随机种子: ' + newSeed);
+        
+        // 更新指纹和 User-Agent
+        await this.generateRandomFingerprint();
+        
+        this.$message.success('指纹和 User-Agent 已更新');
+      } catch (error) {
+        this.$message.error('更新随机种子失败: ' + error.message);
+      }
+    },
+    
+    /**
+     * 生成随机指纹
+     */
     async generateRandomFingerprint() {
       try {
+        // 确保随机种子存在，如果不存在则生成
+        const seed = this.ensureRandomSeed();
+        
         const options = {
           browser: this.browserType,
           os: this.osType,
@@ -324,7 +388,10 @@ const FingerprintTab = {
           hardwareInfoProtection: this.localFingerprint.hardwareInfoProtection,
           audioContextProtection: this.localFingerprint.audioContextProtection,
           pluginDataProtection: this.localFingerprint.pluginDataProtection,
-          timezoneProtection: this.localFingerprint.timezoneProtection
+          rectsProtection: this.localFingerprint.rectsProtection,
+          timezoneProtection: this.localFingerprint.timezoneProtection,
+          // 传递随机种子
+          randomSeed: seed
         };
         
         const fingerprint = await window.ipcRenderer.invoke('generate-random-fingerprint', options);
@@ -338,7 +405,10 @@ const FingerprintTab = {
           hardwareInfoProtection: options.hardwareInfoProtection,
           audioContextProtection: options.audioContextProtection,
           pluginDataProtection: options.pluginDataProtection,
-          timezoneProtection: options.timezoneProtection
+          rectsProtection: options.rectsProtection,
+          timezoneProtection: options.timezoneProtection,
+          protectionMode: this.localFingerprint.protectionMode, // 保留当前的防护模式设置
+          randomSeed: options.randomSeed // 保存随机种子
         };
         
         this.detectBrowserAndOS();
@@ -347,6 +417,38 @@ const FingerprintTab = {
       } catch (error) {
         this.$message.error('生成随机指纹失败: ' + error.message);
       }
-    }
+    },
+    
+    /**
+     * 打开指纹测试平台
+     */
+    async openTestPlatform() {
+      let url = '';
+      switch (this.testPlatform) {
+        case 'yalala':
+          url = 'https://www.yalala.com/';
+          break;
+        case 'amiunique':
+          url = 'https://amiunique.org/fp';
+          break;
+        case 'browserleaks':
+          url = 'https://browserleaks.com/canvas';
+          break;
+        case 'pixelscan':
+          url = 'https://pixelscan.net/';
+          break;
+        default:
+          url = 'https://www.yalala.com/';
+      }
+      
+      try {
+        await window.ipcRenderer.invoke('open-url-in-browser', this.profile.id, url);
+        this.$message.success(`已在浏览器中打开 ${url}`);
+      } catch (error) {
+        this.$message.error(`打开测试平台失败: ${error.message}`);
+      }
+    },
+    
+   
   }
 };
