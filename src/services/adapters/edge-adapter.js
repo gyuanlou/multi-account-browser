@@ -103,14 +103,13 @@ class EdgeAdapter extends BrowserAdapter {
       headless: false,
       executablePath: this.getBrowserPath(),
       args: [
+        // 基本参数
         '--no-first-run',
         '--no-default-browser-check',
         `--remote-debugging-port=${debugPort}`,
         '--disable-sync',
-        '--disable-features=TranslateUI',
         '--disable-breakpad',
         '--disable-background-networking',
-        '--enable-features=NetworkService,NetworkServiceInProcess',
         '--disable-background-timer-throttling',
         '--disable-backgrounding-occluded-windows',
         '--disable-client-side-phishing-detection',
@@ -125,36 +124,58 @@ class EdgeAdapter extends BrowserAdapter {
         '--disable-renderer-backgrounding',
         '--force-color-profile=srgb',
         '--metrics-recording-only',
-        // 下载路径设置
         `--download-default-directory=${downloadPath}`,
         '--enable-local-file-accesses',
         '--allow-file-access-from-files',
+        
         // Edge 特定参数
-        '--disable-features=msEdgeTranslate',
         '--disable-microsoft-update',
         
-        // 添加反自动化检测参数
-        '--disable-blink-features=AutomationControlled',  // 禁用自动化控制标志
-        '--disable-features=IsolateOrigins,site-per-process',  // 禁用站点隔离
-        '--ignore-certificate-errors',  // 忽略证书错误
-        //'--enable-automation',  // 启用自动化，但后面会通过脚本隐藏标志
-        '--disable-domain-reliability',  // 禁用域可靠性监控
-        '--disable-infobars',  // 禁用信息栏
-        '--no-sandbox',  // 禁用沙盒模式，提高兼容性
-        '--disable-setuid-sandbox',  // 禁用 setuid 沙盒
-        '--disable-web-security',  // 禁用网络安全限制，允许跨域请求
-        '--disable-notifications'  // 禁用通知
-        //'--disable-translate'  // 禁用翻译功能
+        // 禁用特性（合并参数）
+        '--disable-features=TranslateUI,SameSiteByDefaultCookies,msEdgeTranslate',
+        
+        // 启用特性（合并参数）
+        '--enable-features=NetworkService,NetworkServiceInProcess',
+        
+        // 禁用Blink特性（合并参数）
+        '--disable-blink-features=AutomationControlled,PermissionsPolicyExperimentalFeatures',
+        
+        // 反自动化检测参数
+        '--ignore-certificate-errors',          // 忽略证书错误
+        '--disable-domain-reliability',         // 禁用域可靠性监控
+        '--disable-infobars',                   // 禁用信息栏
+        '--no-sandbox',                         // 禁用沙盒模式
+        '--disable-setuid-sandbox',             // 禁用setuid沙盒
+        '--disable-notifications',              // 禁用通知
+        
+        // WebGL相关参数（保留全部）
+        '--enable-unsafe-webgl',
+        '--enable-webgl',
+        '--ignore-gpu-blocklist',
+        '--enable-unsafe-swiftshader',
+        
+        // 权限和交互相关参数
+        '--document-user-activation-required=false',
+        '--allow-insecure-localhost',
+        '--autoplay-policy=no-user-gesture-required'
+        
+        // 以下参数已注释，可能影响网站功能
+        // '--disable-web-security',          // 禁用网络安全限制，允许跨域请求
+        // '--disable-features=IsolateOrigins,site-per-process', // 禁用站点隔离
+        // '--enable-automation',              // 启用自动化标记
       ]
     };
     
     // 添加窗口大小设置
     const { windowWidth, windowHeight } = profile.startup || {};
-    if (windowWidth && windowHeight) {
-      launchOptions.viewport = {
-        width: parseInt(windowWidth),
-        height: parseInt(windowHeight)
-      };
+    if (windowWidth && windowHeight) {      
+      // 使用命令行参数设置窗口大小
+      launchOptions.args = launchOptions.args || [];
+      launchOptions.args.push(`--window-size=${parseInt(windowWidth)},${parseInt(windowHeight)}`);
+    } else {
+      // 如果没有设置窗口大小，使用默认值
+      launchOptions.args = launchOptions.args || [];
+      launchOptions.args.push('--window-size=1280,800');
     }
     
     // 添加代理设置
@@ -216,12 +237,40 @@ class EdgeAdapter extends BrowserAdapter {
   async launchBrowser(executablePath, launchArgs, options = {}) {
     const { userDataDir, launchOptions } = launchArgs;
     
+    // 过滤启动参数，移除可能影响内部页面的参数
+    let filteredArgs = [];
+    if (launchOptions.args) {
+      // 移除可能影响内部页面的参数
+      const argsToRemove = [
+        '--disable-web-security',  // 这个参数会影响内部页面CSS布局
+        '--disable-features=IsolateOrigins,site-per-process',  // 这个参数影响页面隔离
+        '--force-device-scale-factor='  // 移除任何缩放因子参数
+      ];
+      
+      filteredArgs = launchOptions.args.filter(arg => {
+        return !argsToRemove.some(argToRemove => arg && arg.includes(argToRemove));
+      });
+      
+      // 确保已有窗口大小设置
+      const hasWindowSize = filteredArgs.some(arg => arg && arg.startsWith('--window-size='));
+      if (!hasWindowSize) {
+        // 添加默认窗口大小
+        filteredArgs.push('--window-size=1280,800');
+      }
+    } else {
+      // 如果没有参数，创建默认参数
+      filteredArgs = ['--window-size=1280,800', '--enable-features=IsolateOrigins'];
+    }
+    
     // 使用 Playwright 启动 Edge
     const context = await chromium.launchPersistentContext(userDataDir, {
       ...launchOptions,
       executablePath: executablePath || this.getBrowserPath(),
       acceptDownloads: true, // 允许下载文件
-      channel: 'msedge'
+      channel: 'msedge',
+      // 不设置viewport，而是使用命令行参数设置窗口大小
+      viewport: null,
+      args: filteredArgs
     });
     
     // 设置下载行为
@@ -292,6 +341,31 @@ class EdgeAdapter extends BrowserAdapter {
           console.error(`下载处理出错: ${error.message}`);
         }
       });
+    }
+    
+    // 应用指纹防护（使用基类中的实现）
+    // 确保只在常规页面应用指纹防护，不影响内部页面
+    if (options.profile && options.profile.fingerprint && options.profile.fingerprint.enabled) {
+      try {
+        // 检查当前页面
+        const pages = await context.pages();
+        if (pages.length > 0) {
+          const currentUrl = pages[0].url();
+          // 跳过浏览器内部页面
+          if (!currentUrl.startsWith('chrome://') && 
+              !currentUrl.startsWith('edge://') && 
+              !currentUrl.startsWith('about:') && 
+              !currentUrl.startsWith('chrome-extension://') && 
+              !currentUrl.startsWith('devtools://') && 
+              !currentUrl.startsWith('view-source:')) {
+            await this.applyFingerprintProtection(context, options.profile);
+          } else {
+            console.log(`[指纹防护] 跳过浏览器内部页面的指纹防护: ${currentUrl}`);
+          }
+        }
+      } catch (error) {
+        console.error('在检查页面类型时出错:', error);
+      }
     }
     
     // 如果有起始 URL，打开该页面
@@ -433,49 +507,7 @@ class EdgeAdapter extends BrowserAdapter {
     }
   }
   
-  /**
-   * 导航到 URL
-   * @param {Object} context 浏览器上下文
-   * @param {string} url URL
-   * @param {Object} options 导航选项
-   * @returns {Promise<Object>} 导航结果
-   */
-  async navigateToUrl(context, url, options = {}) {
-    try {
-      // 获取活动页面或创建新页面
-      let page;
-      const pages = await context.pages();
-      
-      if (pages.length > 0) {
-        page = pages[0];
-      } else {
-        page = await context.newPage();
-      }
-      
-      // 设置超时
-      const timeout = options.timeout || 30000;
-      page.setDefaultTimeout(timeout);
-      
-      // 导航到 URL
-      const response = await page.goto(url, {
-        waitUntil: options.waitUntil || 'domcontentloaded',
-        timeout: timeout
-      });
-      
-      return {
-        success: true,
-        status: response.status(),
-        url: page.url(),
-        page: page
-      };
-    } catch (error) {
-      console.error('导航失败:', error);
-      return {
-        success: false,
-        message: `导航失败: ${error.message}`
-      };
-    }
-  }
+  
   
   /**
    * 清除浏览器缓存

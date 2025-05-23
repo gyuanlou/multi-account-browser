@@ -140,6 +140,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
       'get-recent-comparison-results',
       'open-url-in-browser',
       'open-external-url',
+      'update-fingerprint-scripts',
       
       // 性能优化
       'get-resource-usage',

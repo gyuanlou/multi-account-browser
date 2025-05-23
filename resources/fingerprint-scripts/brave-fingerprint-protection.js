@@ -1,678 +1,696 @@
-/**
- * Brave 风格的指纹防护脚本
- * 参考 Brave 浏览器的防护机制实现
- * 用于防止网站通过各种方式收集浏览器指纹
- */
 
-(function() {
-  // 在页面上显示防护状态，便于调试
-  const debugDiv = document.createElement('div');
-  debugDiv.style.position = 'fixed';
-  debugDiv.style.top = '10px';
-  debugDiv.style.right = '10px';
-  debugDiv.style.zIndex = '9999';
-  debugDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-  debugDiv.style.color = '#fff';
-  debugDiv.style.padding = '10px';
-  debugDiv.style.borderRadius = '5px';
-  debugDiv.style.fontSize = '12px';
-  debugDiv.style.maxWidth = '300px';
-  debugDiv.style.maxHeight = '200px';
-  debugDiv.style.overflow = 'auto';
-  debugDiv.innerHTML = '<h3>指纹防护状态</h3><div id="fingerprint-debug-content"></div>';
-  
-  // 延迟添加到页面，确保页面已加载
-  setTimeout(() => {
-    document.body.appendChild(debugDiv);
-  }, 1000);
-  
-  // 调试日志函数
-  function debugLog(message) {
-    console.log(message);
-    setTimeout(() => {
-      const debugContent = document.getElementById('fingerprint-debug-content');
-      if (debugContent) {
-        debugContent.innerHTML += '<div>' + message + '</div>';
+        // Brave风格指纹防护脚本
+        // 生成时间: 2025-05-23T03:51:22.665Z
+        
+        // 在窗口上定义指纹配置
+        window.__FINGERPRINT_CONFIG__ = { 
+          enabled: true,
+          mode: 'brave',
+          canvasProtection: true,
+          fontProtection: true,
+          audioContextProtection: true,
+          webglProtection: true,
+          webrtcProtection: true,
+          hardwareInfoProtection: true,
+          compatibleSites: 'aliyun.com\nalipay.com\ntaobao.com\ntmall.com\nweibo.com\nqq.com\nbaidu.com',
+          time: '2025-05-23T03:51:22.665Z'
+        };
+        
+        // 添加域名隔离的指纹种子生成
+        
+    // 指纹种子生成与域名隔离 - 极简版本
+    (function() {
+      // 再次检查是否已禁用指纹防护
+      if (window.__FINGERPRINT_PROTECTION_DISABLED === true) {
+        return; // 如果在浏览器内部页面上，跳过所有操作
       }
-    }, 1000);
-  }
-  
-  // 获取配置，如果没有配置则使用默认值
-  const config = window.__FINGERPRINT_CONFIG__ || {
-    canvasProtection: true,
-    webrtcProtection: true,
-    hardwareInfoProtection: true,
-    audioContextProtection: true,
-    pluginDataProtection: true,
-    rectsProtection: true,
-    timezoneProtection: true,
-    fontProtection: true
-  };
-  
-  debugLog('[指纹防护] 脚本已成功注入！');
-  debugLog('[指纹防护] 加载配置: ' + JSON.stringify(config));
-  
-  // 使用配置中的随机种子，或生成一个新的随机种子
-  const SEED = config.randomSeed || Math.floor(Math.random() * 2147483647);
-  debugLog('[指纹防护] 使用随机种子:', SEED);
-  
-  // 全局种子值，用于生成一致的随机数
-  let globalSeed = SEED;
-  
-  // 生成一致的随机数
-  function seededRandom() {
-    globalSeed = (globalSeed * 9301 + 49297) % 233280;
-    return globalSeed / 233280;
-  }
-  
-  /**
-   * 生成伪造设备配置
-   * @param {Object} config - 指纹防护配置
-   * @returns {Object} 伪造设备配置
-   */
-  function generateFakeDeviceProfile(config) {
-    debugLog('生成伪造设备配置，配置信息：', config);
-    
-    // 直接使用配置中的值，仅在缺失时生成默认值
-    
-    // 平台信息
-    let platform = config.platform || 'Win32';
-    let osName = 'Windows';
-    
-    if (platform === 'MacIntel') {
-      osName = 'macOS';
-    } else if (platform === 'Linux x86_64') {
-      osName = 'Linux';
-    }
-    
-    // User-Agent
-    let userAgent = config.userAgent || '';
-    if (!userAgent) {
-      userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36';
-    }
-    
-    // GPU 信息 - 优先使用配置中的值
-    let gpuVendor = config.gpuVendor;
-    let gpuRenderer = config.gpuRenderer;
-    
-    // 如果没有配置 GPU 信息，根据操作系统选择默认值
-    if (!gpuVendor || !gpuRenderer) {
-      const defaultGpuInfo = {
-        'Windows': {
-          vendor: 'Google Inc.',
-          renderer: 'ANGLE (Intel, Intel(R) UHD Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)'
-        },
-        'macOS': {
-          vendor: 'Apple',
-          renderer: 'ANGLE (Apple, Apple M1, OpenGL 4.1)'
-        },
-        'Linux': {
-          vendor: 'Mesa',
-          renderer: 'ANGLE (Intel, Mesa Intel(R) UHD Graphics 620 (KBL GT2), OpenGL 4.6)'
+      // 创建一个隔离的环境，使指纹防护不会影响页面布局
+      const createIsolatedEnvironment = function() {
+        try {
+          // 创建隔离环境，不影响页面DOM和CSS
+          return {
+            // 安全的随机函数，不会修改原始Math.random
+            random: function() { 
+              return Math.random(); // 使用原始的随机函数
+            },
+            // 确保页面样式不受影响
+            preserveStyles: function() {
+              // 不做任何修改
+            }
+          };
+        } catch (e) {
+          console.warn('创建隔离环境失败:', e);
+          return {
+            random: Math.random,
+            preserveStyles: function() {}
+          };
         }
       };
       
-      gpuVendor = gpuVendor || defaultGpuInfo[osName].vendor;
-      gpuRenderer = gpuRenderer || defaultGpuInfo[osName].renderer;
-    }
-    
-    // 屏幕分辨率 - 使用配置中的值
-    const screenWidth = config.screenWidth || 1920;
-    const screenHeight = config.screenHeight || 1080;
-    
-    // 语言 - 使用配置中的值
-    let language = ['en-US', 'en'];
-    if (config.language) {
-      language = [config.language, config.language.split('-')[0]];
-    }
-    
-    // 时区偏移 - 使用配置中的值或与地理位置相关的值
-    let timezoneOffset = -480; // 默认 UTC+8
-    
-    // 如果有地理位置配置，则根据地理位置设置时区
-    if (config.geoLocation && config.geoLocation.timezone) {
-      // 将时区 ID 转换为偏移分钟数
-      const timezoneMap = {
-        'America/New_York': 240,      // UTC-4
-        'America/Chicago': 300,       // UTC-5
-        'America/Denver': 360,        // UTC-6
-        'America/Los_Angeles': 420,   // UTC-7
-        'Europe/London': 0,           // UTC+0
-        'Europe/Berlin': -60,         // UTC+1
-        'Europe/Moscow': -180,        // UTC+3
-        'Asia/Dubai': -240,           // UTC+4
-        'Asia/Shanghai': -480,        // UTC+8
-        'Asia/Tokyo': -540,           // UTC+9
-        'Australia/Sydney': -600,     // UTC+10
-        'Pacific/Auckland': -720      // UTC+12
-      };
+      // 创建隔离环境
+      const isolatedEnv = createIsolatedEnvironment();
+      isolatedEnv.preserveStyles();
       
-      if (timezoneMap[config.geoLocation.timezone]) {
-        timezoneOffset = timezoneMap[config.geoLocation.timezone];
-      }
-    }
-    
-    // 硬件信息 - 使用配置中的值或默认值
-    const hardwareConcurrency = config.hardwareConcurrency || 4;
-    const deviceMemory = config.deviceMemory || 8;
-    
-    // 返回伪造设备配置
-    return {
-      userAgent,
-      platform,
-      hardwareConcurrency,
-      deviceMemory,
-      language,
-      timezoneOffset,
-      screen: {
-        width: parseInt(screenWidth),
-        height: parseInt(screenHeight),
-        colorDepth: 24
-      },
-      gpu: {
-        vendor: gpuVendor,
-        renderer: gpuRenderer
-      },
-      // 生成一个随机的指纹哈希，但对于同一个会话保持一致
-      fingerprint: Array.from({length: 16}, () => Math.floor(seededRandom() * 16).toString(16)).join('').toUpperCase()
-    };
-  }
-  
-  // 生成一个一致的设备配置，传入用户配置
-  const fakeDeviceProfile = generateFakeDeviceProfile(config);
-  
-  debugLog('[指纹防护] 伪造设备信息: ' + JSON.stringify(fakeDeviceProfile, null, 2));
-  
-  // 为对象添加噪声
-  function addNoise(obj, properties, magnitude = 0.01) {
-    const result = {};
-    for (const prop in obj) {
-      if (typeof obj[prop] === 'number' && properties.includes(prop)) {
-        // 添加微小的噪声
-        result[prop] = obj[prop] * (1 + (seededRandom() * 2 - 1) * magnitude);
-      } else {
-        result[prop] = obj[prop];
-      }
-    }
-    return result;
-  }
-
-  // 保存原始方法
-  const originalCreateElement = Document.prototype.createElement;
-  const originalGetContext = HTMLCanvasElement.prototype.getContext;
-  const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
-  const originalGetImageData = CanvasRenderingContext2D.prototype.getImageData;
-  const originalMeasureText = CanvasRenderingContext2D.prototype.measureText;
-  const originalGetParameter = WebGLRenderingContext.prototype.getParameter;
-  const originalGetExtension = WebGLRenderingContext.prototype.getExtension;
-  const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
-  const originalGetClientRects = Element.prototype.getClientRects;
-  
-  // 修改 Canvas 相关方法
-  if (config.canvasProtection) {
-    Document.prototype.createElement = function(tagName) {
-      const element = originalCreateElement.apply(this, arguments);
-      
-      if (tagName.toLowerCase() === 'canvas') {
-          // 重写 getContext 方法
-          element.getContext = function(contextType) {
-            const context = originalGetContext.apply(this, arguments);
-            
-            if (contextType === '2d') {
-              // 重写 getImageData 方法
-              context.getImageData = function() {
-                const imageData = originalGetImageData.apply(this, arguments);
-                const data = imageData.data;
-                
-                // 添加微小的噪声到像素数据
-                for (let i = 0; i < data.length; i += 4) {
-                  // 只修改一小部分像素
-                  if (Math.random() < 0.1) {
-                    data[i] = Math.max(0, Math.min(255, data[i] + Math.floor(Math.random() * 2) - 1));
-                    data[i+1] = Math.max(0, Math.min(255, data[i+1] + Math.floor(Math.random() * 2) - 1));
-                    data[i+2] = Math.max(0, Math.min(255, data[i+2] + Math.floor(Math.random() * 2) - 1));
-                  }
-                }
-                
-                return imageData;
-              };
-              
-              // 重写 measureText 方法
-              context.measureText = function(text) {
-                const metrics = originalMeasureText.apply(this, arguments);
-                // 添加微小的随机变化
-                const originalWidth = metrics.width;
-                Object.defineProperty(metrics, 'width', {
-                  get: function() {
-                    return originalWidth + (Math.random() * 0.02 - 0.01);
-                  }
-                });
-                return metrics;
-              };
-          } 
+      // 基于域名创建唯一的种子值（模拟Brave的farbling技术）
+      window.__getFingerprintSeed = function(domainKey) {
+        try {
+          // 获取当前域名，如果未提供则使用当前域名
+          const domain = domainKey || 
+            (window.location && window.location.hostname ? 
+              window.location.hostname.split('.').slice(-2).join('.') : 
+              'default-domain');
           
-          return context;
-        };
-        
-        // 重写 toDataURL 方法
-        element.toDataURL = function() {
-          // 获取原始数据 URL
-          const dataURL = originalToDataURL.apply(this, arguments);
-          
-          // 如果是空白 Canvas，直接返回
-          if (this.width === 0 || this.height === 0) {
-            return dataURL;
-          }
-          
-          // 创建一个临时 Canvas 并添加微小的噪声
-          const tempCanvas = originalCreateElement.call(document, 'canvas');
-          tempCanvas.width = this.width;
-          tempCanvas.height = this.height;
-          
-          const ctx = originalGetContext.call(tempCanvas, '2d');
-          const img = new Image();
-          
-          // 同步方式处理
-          const sync = function() {
-            img.src = dataURL;
-            ctx.drawImage(img, 0, 0);
-            const imageData = originalGetImageData.call(ctx, 0, 0, tempCanvas.width, tempCanvas.height);
-            const data = imageData.data;
-            
-            // 添加微小的噪声
-            for (let i = 0; i < data.length; i += 4) {
-              // 只修改一小部分像素
-              if (Math.random() < 0.1) {
-                data[i] = Math.max(0, Math.min(255, data[i] + Math.floor(Math.random() * 2) - 1));
-                data[i+1] = Math.max(0, Math.min(255, data[i+1] + Math.floor(Math.random() * 2) - 1));
-                data[i+2] = Math.max(0, Math.min(255, data[i+2] + Math.floor(Math.random() * 2) - 1));
-              }
+          // 创建一个基于域名的伪随机数生成器
+          function createSeededRandom(seed) {
+            if (!seed || typeof seed !== 'string') {
+              seed = 'default-seed';
             }
+            // 使用简单的哈希函数将域名转换为数字种子
+            const numericSeed = Array.from(seed).reduce(
+              (acc, char, i) => acc + char.charCodeAt(0) * Math.pow(31, seed.length - i - 1), 0
+            ) % 2147483647;
             
-            ctx.putImageData(imageData, 0, 0);
-            return originalToDataURL.call(tempCanvas, arguments[0], arguments[1]);
-          };
-          
-          try {
-            return sync();
-          } catch (e) {
-            // 如果同步方式失败，返回原始数据
-            return dataURL;
-          }
-        };
-      }
-      
-      return element;
-   };
-   console.log('[指纹防护] Canvas 防护已启用');
-  }
-  
-  // WebGL 防护功能
-  if (config.hardwareInfoProtection) {
-    // 修改 getContext 方法，对 WebGL 上下文进行防护
-    const originalGetContext = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function(contextType, ...args) {
-      // 首先获取原始上下文
-      const context = originalGetContext.apply(this, [contextType, ...args]);
-      
-      // 如果不是 WebGL 上下文或获取失败，直接返回
-      if (!context) return context;
-      
-      // 如果是 WebGL 相关的上下文，进行防护
-      if (contextType === 'webgl' || contextType === 'experimental-webgl' || contextType === 'webgl2') {
-        debugLog('[指纹防护] 检测到 WebGL 上下文创建，应用防护');
-        
-        // 重写 getParameter 方法
-        const originalGetParameter = context.getParameter;
-        context.getParameter = function(parameter) {
-          // WebGL 渲染器信息
-          if (parameter === 37445) { // UNMASKED_VENDOR_WEBGL
-            return fakeDeviceProfile.gpu.vendor;
-          }
-          if (parameter === 37446) { // UNMASKED_RENDERER_WEBGL
-            return fakeDeviceProfile.gpu.renderer;
-          }
-          
-          // 其他 WebGL 参数
-          if (parameter === 7936) { // VENDOR
-            return 'WebKit';
-          }
-          if (parameter === 7937) { // RENDERER
-            return 'WebKit WebGL';
-          }
-          if (parameter === 35724) { // SHADING_LANGUAGE_VERSION
-            return 'WebGL GLSL ES 1.0 (OpenGL ES GLSL ES 1.0 Chromium)';
-          }
-          if (parameter === 3379) { // MAX_TEXTURE_SIZE
-            return 16384;
-          }
-          if (parameter === 3386) { // MAX_VIEWPORT_DIMS
-            return [16384, 16384];
-          }
-          
-          return originalGetParameter.apply(this, arguments);
-        };
-        
-        // 重写 getExtension 方法
-        const originalGetExtension = context.getExtension;
-        context.getExtension = function(name) {
-          if (name === 'WEBGL_debug_renderer_info') {
-            // 返回一个修改过的扩展对象
-            return {
-              UNMASKED_VENDOR_WEBGL: 37445,
-              UNMASKED_RENDERER_WEBGL: 37446
+            // 使用线性同余生成器算法
+            let seed1 = numericSeed || 12345;
+            return function() {
+              seed1 = (seed1 * 16807) % 2147483647;
+              return (seed1 - 1) / 2147483646;
             };
           }
           
-          return originalGetExtension.apply(this, arguments);
+          // 为当前域名创建一个固定的随机数生成器
+          const sessionKey = 'Fri May 23 2025';
+          const combinedKey = domain + sessionKey;
+          const random = createSeededRandom(combinedKey);
+          
+          // 返回一个基于域名的噪声函数，保证同一域名产生相同噪声
+          return {
+            random: random,
+            // 为任意值添加微小的扰动，但扰动对于同一域名是一致的
+            noise: function(value, scale = 0.01) {
+              if (typeof value !== 'number') return value;
+              return value + (random() * 2 - 1) * scale * value;
+            },
+            // 为像素添加噪声
+            pixelNoise: function(pixel, intensity = 10) {
+              if (typeof pixel !== 'number') return pixel;
+              // 确保相同输入值对应相同的随机变化
+              const r = Math.max(0, Math.min(255, pixel + (random() * 2 - 1) * intensity));
+              return Math.floor(r);
+            }
+          };
+        } catch (e) {
+          console.warn('创建指纹种子时出错:', e);
+          // 返回一个安全的后备实现
+          return {
+            random: function() { return Math.random(); },
+            noise: function(value) { return value; },
+            pixelNoise: function(pixel) { return pixel; }
+          };
+        }
+      };
+      
+      // 默认使用当前域名创建种子 - 但不影响页面布局
+      window.__domainFingerprint = window.__getFingerprintSeed();
+      window.__isolatedFingerprint = true;
+      
+      // 保存原始的重要方法，防止意外修改
+      if (!window.__savedOriginalFunctions) {
+        window.__savedOriginalFunctions = {
+          // DOM操作
+          appendChild: Element.prototype.appendChild,
+          insertBefore: Element.prototype.insertBefore,
+          setAttribute: Element.prototype.setAttribute,
+          // 样式操作
+          getComputedStyle: window.getComputedStyle
         };
+      }
+      
+      // 监测页面布局变化，但不主动修改
+      const ensureLayoutPreservation = function() {
+        try {
+          // 仅监测布局问题，不进行主动修复
+          if (document.body) {
+            // 仅记录日志，不修改布局
+            console.log('检测到指纹防护已加载，正在确保不影响页面布局');
+          }
+        } catch (e) {
+          // 静默处理错误，不影响任何功能
+        }
+      };
+      
+      // 延迟检查布局完整性，但不进行修改
+      setTimeout(ensureLayoutPreservation, 1000);
+      
+      console.log('域名隔离指纹种子已创建');
+    {{ ... }}
+    })();
+    
         
-        // 重写 getSupportedExtensions 方法
-        const originalGetSupportedExtensions = context.getSupportedExtensions;
-        context.getSupportedExtensions = function() {
-          const extensions = originalGetSupportedExtensions.apply(this, arguments);
-          
-          // 过滤掉可能泄露硬件信息的扩展
-          const filtered = extensions.filter(ext => {
-            return !ext.includes('debug') && 
-                  !ext.includes('WEBGL_debug_renderer_info') && 
-                  !ext.includes('WEBGL_debug_shaders');
-          });
-          
-          return filtered;
-        };
+        // 应用增强版Canvas指纹防护
         
-        // 重写 readPixels 方法
-        const originalReadPixels = context.readPixels;
-        context.readPixels = function() {
-          const result = originalReadPixels.apply(this, arguments);
-          
-          // 如果是 TypedArray，添加微小的噪声
-          if (arguments[6] && arguments[6].constructor.name.includes('Array')) {
-            const data = arguments[6];
-            for (let i = 0; i < data.length; i += 4) {
-              if (Math.random() < 0.05) { // 只修改 5% 的像素
-                data[i] = Math.max(0, Math.min(255, data[i] + (Math.random() * 2 - 1)));
-                if (i + 1 < data.length) data[i+1] = Math.max(0, Math.min(255, data[i+1] + (Math.random() * 2 - 1)));
-                if (i + 2 < data.length) data[i+2] = Math.max(0, Math.min(255, data[i+2] + (Math.random() * 2 - 1)));
+    // Canvas 指纹防护
+    (function() {
+      const originalGetContext = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function(type, attributes) {
+        const context = originalGetContext.call(this, type, attributes);
+        
+        if (type === '2d') {
+          const originalGetImageData = context.getImageData;
+          context.getImageData = function(sx, sy, sw, sh) {
+            const imageData = originalGetImageData.call(this, sx, sy, sw, sh);
+            
+            // 添加微小的噪点，不影响视觉效果但能改变指纹
+            const noise = 15;
+            if (noise > 0) {
+              const data = imageData.data;
+              for (let i = 0; i < data.length; i += 4) {
+                // 随机调整 RGB 值
+                data[i] = Math.max(0, Math.min(255, data[i] + (window.__domainFingerprint.random() * 2 - 1) * noise));
+                data[i+1] = Math.max(0, Math.min(255, data[i+1] + (window.__domainFingerprint.random() * 2 - 1) * noise));
+                data[i+2] = Math.max(0, Math.min(255, data[i+2] + (window.__domainFingerprint.random() * 2 - 1) * noise));
               }
             }
+            
+            return imageData;
+          };
+          
+          // 修改 Canvas 的 toDataURL 方法
+          const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+          HTMLCanvasElement.prototype.toDataURL = function() {
+            // 对于空白 Canvas，添加一个不可见的像素
+            if (this.width === 0 || this.height === 0) {
+              return originalToDataURL.apply(this, arguments);
+            }
+            
+            const ctx = originalGetContext.call(this, '2d');
+            const imageData = ctx.getImageData(0, 0, 1, 1);
+            const pixel = imageData.data;
+            
+            // 添加微小的变化
+            const noise = 15;
+            if (noise > 0) {
+              pixel[0] = Math.max(0, Math.min(255, pixel[0] + (window.__domainFingerprint.random() * 2 - 1) * noise));
+              pixel[1] = Math.max(0, Math.min(255, pixel[1] + (window.__domainFingerprint.random() * 2 - 1) * noise));
+              pixel[2] = Math.max(0, Math.min(255, pixel[2] + (window.__domainFingerprint.random() * 2 - 1) * noise));
+              ctx.putImageData(imageData, 0, 0);
+            }
+            
+            return originalToDataURL.apply(this, arguments);
+          };
+        } else if (type === 'webgl' || type === 'experimental-webgl' || type === 'webgl2') {
+          // WebGL 指纹防护
+          const getParameterProxyHandler = {
+            apply: function(target, thisArg, args) {
+              const param = args[0];
+              
+              // 修改 WebGL 参数返回值
+              if (param === 37445) { // UNMASKED_VENDOR_WEBGL
+                return '"Google Inc."';
+              }
+              
+              if (param === 37446) { // UNMASKED_RENDERER_WEBGL
+                return '"ANGLE (Google, Vulkan 1.3.0)"';
+              }
+              
+              return target.apply(thisArg, args);
+            }
+          };
+          
+          // 代理 getParameter 方法
+          context.getParameter = new Proxy(context.getParameter, getParameterProxyHandler);
+        }
+        
+        return context;
+      };
+    })();
+    
+        
+        // 应用增强版字体指纹防护
+        
+    // 字体指纹防护
+    (function() {
+      // 1. 重写 document.fonts.check，干扰字体检测
+      if (document.fonts && document.fonts.check) {
+        const originalCheck = document.fonts.check;
+        document.fonts.check = function(font, text) {
+          const allowedFonts = ["Arial","Arial Black","Arial Narrow","Calibri","Cambria","Cambria Math","Comic Sans MS","Courier","Courier New","Georgia"];
+          for (const allowedFont of allowedFonts) {
+            if (font.includes(allowedFont)) {
+              // 对允许的字体正常返回
+              return originalCheck.call(this, font, text);
+            }
+          }
+          // 对不在允许列表的字体，随机返回true/false
+          if (true) {
+            return window.__domainFingerprint.random() > 0.5;
+          }
+          return false;
+        };
+      }
+
+      // 2. 干扰 Canvas 字体测量（measureText）
+      if (window.CanvasRenderingContext2D && CanvasRenderingContext2D.prototype.measureText) {
+        const originalMeasureText = CanvasRenderingContext2D.prototype.measureText;
+        CanvasRenderingContext2D.prototype.measureText = function(text) {
+          const metrics = originalMeasureText.call(this, text);
+          // 对宽度等属性加微小扰动
+          if (metrics && typeof metrics.width === 'number') {
+            const noise = (window.__domainFingerprint.random() - 0.5) * 0.1; // ±0.05 像素扰动
+            metrics.width = metrics.width + noise;
+          }
+          return metrics;
+        };
+      }
+
+      // 3. 干扰 HTMLElement.offsetWidth/offsetHeight 用于字体检测
+      const elementProto = HTMLElement.prototype;
+      ['offsetWidth', 'offsetHeight'].forEach(function(prop) {
+        const original = Object.getOwnPropertyDescriptor(elementProto, prop);
+        if (original && original.get) {
+          Object.defineProperty(elementProto, prop, {
+            get: function() {
+              const value = original.get.apply(this);
+              // 对字体检测相关元素加扰动
+              if (this && this.style && this.style.fontFamily) {
+                const noise = (window.__domainFingerprint.random() - 0.5) * 1; // ±0.5像素扰动
+                return value + noise;
+              }
+              return value;
+            },
+            configurable: true
+          });
+        }
+      });
+
+      // 4. 干扰 getComputedStyle 的 font-family 返回值
+      const originalGetComputedStyle = window.getComputedStyle;
+      window.getComputedStyle = function(element, pseudoElt) {
+        const style = originalGetComputedStyle.call(window, element, pseudoElt);
+        const originalFontFamily = style.fontFamily;
+        Object.defineProperty(style, 'fontFamily', {
+          get: function() {
+            // 只返回允许的字体
+            return ["Arial","Arial Black","Arial Narrow","Calibri","Cambria","Cambria Math","Comic Sans MS","Courier","Courier New","Georgia"].join(', ');
+          },
+          configurable: true
+        });
+        return style;
+      };
+
+      // 5. 干扰 window.navigator.fonts（如有）
+      if (navigator.fonts) {
+        Object.defineProperty(navigator, 'fonts', {
+          get: function() {
+            return {
+              query: () => Promise.resolve({ families: (Array.isArray(["Arial","Arial Black","Arial Narrow","Calibri","Cambria","Cambria Math","Comic Sans MS","Courier","Courier New","Georgia"]) ? ["Arial","Arial Black","Arial Narrow","Calibri","Cambria","Cambria Math","Comic Sans MS","Courier","Courier New","Georgia"] : [["Arial","Arial Black","Arial Narrow","Calibri","Cambria","Cambria Math","Comic Sans MS","Courier","Courier New","Georgia"]]) })
+            };
+          },
+          configurable: true
+        });
+      }
+    })();
+    
+        
+        // 应用增强版硬件信息防护
+        
+    // 硬件信息防护
+    (function() {
+      // 修改 navigator.hardwareConcurrency
+      Object.defineProperty(navigator, 'hardwareConcurrency', {
+        get: function() {
+          return 8;
+        }
+      });
+      
+      // 修改 navigator.deviceMemory
+      if ('deviceMemory' in navigator) {
+        Object.defineProperty(navigator, 'deviceMemory', {
+          get: function() {
+            return 16;
+          }
+        });
+      }
+      
+      // 修改 screen 属性
+      Object.defineProperty(screen, 'width', {
+        get: function() {
+          return 2560;
+        }
+      });
+      
+      Object.defineProperty(screen, 'height', {
+        get: function() {
+          return 1440;
+        }
+      });
+      
+      Object.defineProperty(screen, 'colorDepth', {
+        get: function() {
+          return 24;
+        }
+      });
+      
+      Object.defineProperty(screen, 'pixelDepth', {
+        get: function() {
+          return 24;
+        }
+      });
+      
+      // 修改 window.devicePixelRatio
+      Object.defineProperty(window, 'devicePixelRatio', {
+        get: function() {
+          return 2.0;
+        }
+      });
+      
+      // 传感器和设备方向API防护
+      // 1. DeviceMotionEvent 防护
+      if (window.DeviceMotionEvent) {
+        // 拦截加速度计事件
+        const originalAddEventListener = window.addEventListener;
+        window.addEventListener = function(type, listener, options) {
+          if (type === 'devicemotion') {
+            // 拦截加速度计事件，返回伪造数据
+            const fakeHandler = function(event) {
+              // 创建一个伪造的事件
+              const fakeEvent = new DeviceMotionEvent('devicemotion', {
+                acceleration: {
+                  x: Math.random() * 0.1,  // 轻微的随机值
+                  y: Math.random() * 0.1,
+                  z: Math.random() * 0.1
+                },
+                accelerationIncludingGravity: {
+                  x: Math.random() * 0.1 - 9.8 * (Math.random() > 0.5 ? 1 : -1),  // 模拟重力
+                  y: Math.random() * 0.1,
+                  z: Math.random() * 0.1
+                },
+                rotationRate: {
+                  alpha: Math.random() * 360,  // 0-360度
+                  beta: Math.random() * 180 - 90,   // -90到90度
+                  gamma: Math.random() * 180 - 90   // -90到90度
+                },
+                interval: 16  // 模拟60fps
+              });
+              listener(fakeEvent);
+            };
+            return originalAddEventListener.call(this, type, fakeHandler, options);
+          }
+          else if (type === 'deviceorientation') {
+            // 拦截设备方向事件，返回伪造数据
+            const fakeHandler = function(event) {
+              // 创建一个伪造的事件
+              const fakeEvent = new DeviceOrientationEvent('deviceorientation', {
+                alpha: Math.random() * 360,  // 0-360度
+                beta: Math.random() * 180 - 90,   // -90到90度
+                gamma: Math.random() * 180 - 90,  // -90到90度
+                absolute: true
+              });
+              listener(fakeEvent);
+            };
+            return originalAddEventListener.call(this, type, fakeHandler, options);
+          }
+          return originalAddEventListener.call(this, type, listener, options);
+        };
+      }
+      
+      // 2. 拦截Sensor API
+      if (window.Sensor) {
+        // 拦截所有传感器API
+        const sensors = [
+          'Accelerometer', 
+          'LinearAccelerationSensor', 
+          'GravitySensor',
+          'Gyroscope',
+          'AbsoluteOrientationSensor',
+          'RelativeOrientationSensor',
+          'Magnetometer',
+          'AmbientLightSensor'
+        ];
+        
+        // 对每个传感器类型进行代理
+        sensors.forEach(sensorType => {
+          if (window[sensorType]) {
+            const originalSensor = window[sensorType];
+            window[sensorType] = function() {
+              const sensor = new originalSensor(...arguments);
+              
+              // 拦截 start 方法
+              const originalStart = sensor.start;
+              sensor.start = function() {
+                // 在调用原始方法后生成伪数据
+                originalStart.call(this);
+                
+                // 创建伪造数据
+                if (sensorType === 'Accelerometer' || sensorType === 'LinearAccelerationSensor' || sensorType === 'GravitySensor') {
+                  Object.defineProperties(this, {
+                    x: { value: Math.random() * 0.1, configurable: true },
+                    y: { value: Math.random() * 0.1, configurable: true },
+                    z: { value: 9.8 + Math.random() * 0.1, configurable: true }
+                  });
+                } else if (sensorType === 'Gyroscope') {
+                  Object.defineProperties(this, {
+                    x: { value: Math.random() * 0.01, configurable: true },
+                    y: { value: Math.random() * 0.01, configurable: true },
+                    z: { value: Math.random() * 0.01, configurable: true }
+                  });
+                } else if (sensorType.includes('OrientationSensor')) {
+                  Object.defineProperties(this, {
+                    quaternion: { value: [Math.random(), Math.random(), Math.random(), Math.random()], configurable: true }
+                  });
+                }
+              };
+              
+              return sensor;
+            };
+          }
+        });
+      }
+      
+      // 3. 未来兼容性 - 预防权限策略问题
+      if (navigator.permissions && navigator.permissions.query) {
+        const originalQuery = navigator.permissions.query;
+        navigator.permissions.query = function(permissionDesc) {
+          // 拦截传感器相关的权限查询
+          if (permissionDesc && (permissionDesc.name === 'accelerometer' || 
+              permissionDesc.name === 'gyroscope' || 
+              permissionDesc.name === 'magnetometer' || 
+              permissionDesc.name === 'ambient-light-sensor')) {
+            
+            // 返回一个妥协的 Promise
+            return Promise.resolve({
+              state: 'granted',
+              onchange: null
+            });
           }
           
+          // 其他权限请求正常处理
+          return originalQuery.call(this, permissionDesc);
+        };
+      }
+    })();
+    
+        
+        // 应用增强版音频指纹防护
+        
+    // 音频指纹防护
+    (function() {
+      // 1. 干扰 OfflineAudioContext.prototype.getChannelData
+      if (window.OfflineAudioContext && OfflineAudioContext.prototype.getChannelData) {
+        const originalGetChannelData = OfflineAudioContext.prototype.getChannelData;
+        OfflineAudioContext.prototype.getChannelData = function() {
+          const data = originalGetChannelData.apply(this, arguments);
+          // 每隔一定间隔加微小噪声
+          for (let i = 0; i < data.length; i += 100) {
+            data[i] = data[i] + (window.__domainFingerprint.random() - 0.5) * 1e-5;
+          }
+          return data;
+        };
+      }
+      // 2. 干扰 AudioContext.prototype.createAnalyser
+      if (window.AudioContext && AudioContext.prototype.createAnalyser) {
+        const originalCreateAnalyser = AudioContext.prototype.createAnalyser;
+        AudioContext.prototype.createAnalyser = function() {
+          const analyser = originalCreateAnalyser.apply(this, arguments);
+          if (analyser && analyser.getFloatFrequencyData) {
+            const originalGetFloatFrequencyData = analyser.getFloatFrequencyData;
+            analyser.getFloatFrequencyData = function(array) {
+              // 在频谱数据上加微小扰动
+              for (let i = 0; i < array.length; i += 10) {
+                array[i] = array[i] + (window.__domainFingerprint.random() - 0.5) * 1e-3;
+              }
+              return originalGetFloatFrequencyData.call(this, array);
+            };
+          }
+          return analyser;
+        };
+      }
+    })();
+    
+        
+        // 应用增强版WebGL指纹防护
+        
+    // WebGL 指纹防护
+    (function() {
+      // 1. 干扰 getParameter 返回 vendor/renderer
+      const getParameterProxyHandler = {
+        apply: function(target, thisArg, args) {
+          const param = args[0];
+          if (param === 37445) return '"Google Inc."'; // UNMASKED_VENDOR_WEBGL
+          if (param === 37446) return '"ANGLE (Google, Vulkan 1.3.0)"'; // UNMASKED_RENDERER_WEBGL
+          return target.apply(thisArg, args);
+        }
+      };
+      if (window.WebGLRenderingContext && WebGLRenderingContext.prototype.getParameter) {
+        WebGLRenderingContext.prototype.getParameter = new Proxy(WebGLRenderingContext.prototype.getParameter, getParameterProxyHandler);
+      }
+      // 2. 干扰 getSupportedExtensions
+      if (window.WebGLRenderingContext && WebGLRenderingContext.prototype.getSupportedExtensions) {
+        const originalGetSupportedExtensions = WebGLRenderingContext.prototype.getSupportedExtensions;
+        WebGLRenderingContext.prototype.getSupportedExtensions = function() {
+          // 返回伪造的扩展名列表
+          return ['WEBGL_debug_renderer_info', 'OES_texture_float', 'OES_element_index_uint'];
+        };
+      }
+      // 3. 干扰 readPixels（部分检测会分析像素）
+      if (window.WebGLRenderingContext && WebGLRenderingContext.prototype.readPixels) {
+        const originalReadPixels = WebGLRenderingContext.prototype.readPixels;
+        WebGLRenderingContext.prototype.readPixels = function() {
+          // 调用原始方法
+          const result = originalReadPixels.apply(this, arguments);
+          // 可以在此处对 pixels 数据加扰动（如有需要）
           return result;
         };
       }
-      
-      return context;
-    };
+    })();
     
-    debugLog('[指纹防护] WebGL 防护已启用');
-  }
-  
-  // 修改 AudioContext 相关方法
-  if (config.audioContextProtection && typeof AudioContext !== 'undefined') {
-    const originalAudioContext = AudioContext;
-    window.AudioContext = function() {
-      const context = new originalAudioContext();
-      
-      // 修改 createOscillator 方法
-      const originalCreateOscillator = context.createOscillator;
-      context.createOscillator = function() {
-        const oscillator = originalCreateOscillator.apply(this, arguments);
-        const originalGetFrequency = oscillator.frequency.value;
-        Object.defineProperty(oscillator.frequency, 'value', {
-          get: function() {
-            return originalGetFrequency + (Math.random() * 0.01 - 0.005);
+        
+        // 应用增强版WebRTC防护
+        
+    // WebRTC 防护
+    (function() {
+      if (true) {
+        // 完全禁用 WebRTC
+        const rtcObjects = [
+          'RTCPeerConnection',
+          'webkitRTCPeerConnection',
+          'mozRTCPeerConnection',
+          'RTCIceGatherer'
+        ];
+        
+        for (const rtcObject of rtcObjects) {
+          if (window[rtcObject]) {
+            window[rtcObject] = undefined;
           }
-        });
-        return oscillator;
-      };
-      
-      // 修改 createAnalyser 方法
-      const originalCreateAnalyser = context.createAnalyser;
-      context.createAnalyser = function() {
-        const analyser = originalCreateAnalyser.apply(this, arguments);
-        const originalGetByteFrequencyData = analyser.getByteFrequencyData;
-        analyser.getByteFrequencyData = function(array) {
-          originalGetByteFrequencyData.apply(this, arguments);
-          // 添加微小的噪声
-          for (let i = 0; i < array.length; i++) {
-            if (Math.random() < 0.1) {
-              array[i] = Math.max(0, Math.min(255, array[i] + Math.floor(Math.random() * 2) - 1));
+        }
+      } else {
+        // 修改 WebRTC 行为
+        if (window.RTCPeerConnection) {
+          const originalRTCPeerConnection = window.RTCPeerConnection;
+          window.RTCPeerConnection = function(config, constraints) {
+            // 修改 ICE 服务器配置
+            if (config && config.iceServers) {
+              // 可以在这里修改 ICE 服务器配置
+            }
+            
+            const pc = new originalRTCPeerConnection(config, constraints);
+            
+            // 代理 createOffer 方法
+            const originalCreateOffer = pc.createOffer;
+            pc.createOffer = function(options) {
+              if (true) {
+                // 在这里可以修改 SDP 选项
+              }
+              return originalCreateOffer.call(this, options);
+            };
+            
+            return pc;
+          };
+        }
+      }
+    })();
+    
+        
+        // 增强WebGL防护，添加更多Brave防护的API
+        (function() {
+          if (window.WebGLRenderingContext) {
+            // 保护WebGL着色器精度格式
+            if (WebGLRenderingContext.prototype.getShaderPrecisionFormat) {
+              const originalGetShaderPrecisionFormat = WebGLRenderingContext.prototype.getShaderPrecisionFormat;
+              WebGLRenderingContext.prototype.getShaderPrecisionFormat = function() {
+                const result = originalGetShaderPrecisionFormat.apply(this, arguments);
+                if (result) {
+                  // 基于域名的一致性修改精度范围
+                  const random = window.__domainFingerprint.random();
+                  // 对精度进行微调，保持合理范围
+                  result.rangeMin = Math.max(result.rangeMin - 1, -128);
+                  result.rangeMax = Math.min(result.rangeMax + 1, 127);
+                  result.precision = Math.max(1, result.precision);
+                }
+                return result;
+              };
+            }
+            
+            // 保护顶点属性参数
+            if (WebGLRenderingContext.prototype.getVertexAttrib) {
+              const originalGetVertexAttrib = WebGLRenderingContext.prototype.getVertexAttrib;
+              WebGLRenderingContext.prototype.getVertexAttrib = function(index, pname) {
+                const result = originalGetVertexAttrib.apply(this, arguments);
+                // 只对非关键参数进行修改
+                const nonCriticalParams = [35714, 35715, 35716]; // 顶点属性的一些参数
+                if (nonCriticalParams.includes(pname)) {
+                  // 对参数稍作修改但保持一致性
+                  if (typeof result === 'number') {
+                    return window.__domainFingerprint.noise(result, 0.001);
+                  }
+                }
+                return result;
+              };
             }
           }
-          return array;
-        };
-        return analyser;
-      };
-      
-      return context;
-    };
-    console.log('[指纹防护] 音频指纹防护已启用');
-  }
-  
-  // 修改 WebRTC 相关方法
-  if (config.webrtcProtection && window.RTCPeerConnection) {
-    const originalRTCPeerConnection = window.RTCPeerConnection;
-    window.RTCPeerConnection = function() {
-      const pc = new originalRTCPeerConnection(...arguments);
-      
-      // 重写 createOffer 方法
-      const originalCreateOffer = pc.createOffer;
-      pc.createOffer = function() {
-        const offerConstraints = arguments[0] || {};
-        offerConstraints.offerToReceiveAudio = true;
-        offerConstraints.offerToReceiveVideo = false;
-        
-        return originalCreateOffer.apply(this, [offerConstraints]);
-      };
-      
-      // 重写 setLocalDescription 方法
-      const originalSetLocalDescription = pc.setLocalDescription;
-      pc.setLocalDescription = function() {
-        const desc = arguments[0];
-        if (desc && desc.sdp) {
-          // 修改 SDP 以防止 IP 泄露
-          desc.sdp = desc.sdp.replace(/UDP\/TLS\/RTP\/SAVPF/g, 'TCP/TLS/RTP/SAVPF');
-          desc.sdp = desc.sdp.replace(/127\.0\.0\.1/g, '0.0.0.0');
-          desc.sdp = desc.sdp.replace(/[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/g, '0.0.0.0');
-        }
-        return originalSetLocalDescription.apply(this, arguments);
-      };
-      
-      return pc;
-    };
-    console.log('[指纹防护] WebRTC 防护已启用');
-  }
-  
-  // 修改 Navigator 对象
-  if (config.hardwareInfoProtection) {
-    const originalNavigator = navigator;
-    Object.defineProperty(window, 'navigator', {
-      get: function() {
-        // 创建一个代理对象
-        const navigatorProxy = {};
-        
-        // 复制所有原始属性
-        for (const key in originalNavigator) {
-          if (typeof originalNavigator[key] === 'function') {
-            navigatorProxy[key] = originalNavigator[key].bind(originalNavigator);
-          } else {
-            Object.defineProperty(navigatorProxy, key, {
-              get: function() {
-                // 使用伪造设备配置修改特定属性
-                if (key === 'hardwareConcurrency') {
-                  return fakeDeviceProfile.hardwareConcurrency;
-                }
-                if (key === 'deviceMemory') {
-                  return fakeDeviceProfile.deviceMemory;
-                }
-                if (key === 'platform') {
-                  return fakeDeviceProfile.platform;
-                }
-                if (key === 'userAgent') {
-                  return fakeDeviceProfile.userAgent;
-                }
-                if (key === 'plugins' && config.pluginDataProtection) {
-                  // 返回空的插件列表
-                  return {
-                    length: 0,
-                    item: function() { return null; },
-                    namedItem: function() { return null; },
-                    refresh: function() {}
-                  };
-                }
-                if (key === 'languages') {
-                  return fakeDeviceProfile.language;
-                }
-                
-                return originalNavigator[key];
-              }
-            });
-          }
-        }
-        
-        return navigatorProxy;
-      }
-    });
-    debugLog('[指纹防护] 硬件信息防护已启用');
-  }
-  
-  // 修改 Screen 对象
-  if (config.hardwareInfoProtection) {
-    const originalScreen = screen;
-    Object.defineProperty(window, 'screen', {
-      get: function() {
-        const screenProxy = {};
-        
-        for (const key in originalScreen) {
-          if (typeof originalScreen[key] === 'function') {
-            screenProxy[key] = originalScreen[key].bind(originalScreen);
-          } else {
-            Object.defineProperty(screenProxy, key, {
-              get: function() {
-                // 使用伪造设备配置修改屏幕属性
-                if (key === 'colorDepth' || key === 'pixelDepth') {
-                  return fakeDeviceProfile.screen.colorDepth;
-                }
-                
-                // 使用伪造设备的屏幕尺寸，但如果配置中指定了尺寸，则优先使用配置的值
-                if (key === 'width') {
-                  return config.screenWidth ? parseInt(config.screenWidth) : fakeDeviceProfile.screen.width;
-                }
-                if (key === 'height') {
-                  return config.screenHeight ? parseInt(config.screenHeight) : fakeDeviceProfile.screen.height;
-                }
-                
-                // 修改其他屏幕属性
-                if (key === 'availWidth') {
-                  return config.screenWidth ? parseInt(config.screenWidth) : fakeDeviceProfile.screen.width;
-                }
-                if (key === 'availHeight') {
-                  return config.screenHeight ? parseInt(config.screenHeight) : fakeDeviceProfile.screen.height;
-                }
-                
-                return originalScreen[key];
-              }
-            });
-          }
-        }
-        
-        return screenProxy;
-      }
-    });
-    debugLog('[指纹防护] 屏幕信息防护已启用');
-  }
-  
-  // 修改 Date 对象以防止时区检测
-  if (config.timezoneProtection) {
-    const originalDate = Date;
-    const originalGetTimezoneOffset = Date.prototype.getTimezoneOffset;
-    Date.prototype.getTimezoneOffset = function() {
-      return fakeDeviceProfile.timezoneOffset; // 使用伪造设备的时区偏移
-    };
-    debugLog('[指纹防护] 时区防护已启用');
-  }
-  
-  // 防止 font 指纹识别
-  if (config.fontProtection && window.FontFace) {
-    const originalFontFace = window.FontFace;
-    window.FontFace = function(family, source, descriptors) {
-      // 添加随机延迟
-      const delay = Math.floor(Math.random() * 10);
-      return new Promise(resolve => {
-        setTimeout(() => {
-          resolve(new originalFontFace(family, source, descriptors));
-        }, delay);
-      });
-    };
-    console.log('[指纹防护] 字体防护已启用');
-  }
-  
-  // 防止 DOMRect 指纹识别
-  if (config.rectsProtection) {
-    Element.prototype.getBoundingClientRect = function() {
-      const rect = originalGetBoundingClientRect.apply(this, arguments);
-      
-      // 创建一个新的 DOMRect 对象
-      const newRect = {};
-      for (const key in rect) {
-        if (typeof rect[key] === 'number') {
-          // 为数值属性添加微小的噪声
-          Object.defineProperty(newRect, key, {
-            get: function() {
-              return rect[key] + (Math.random() * 0.02 - 0.01);
+          
+          // 更全面的Canvas API防护
+          if (window.CanvasRenderingContext2D) {
+            // 保护isPointInPath和isPointInStroke
+            if (CanvasRenderingContext2D.prototype.isPointInPath) {
+              const originalIsPointInPath = CanvasRenderingContext2D.prototype.isPointInPath;
+              CanvasRenderingContext2D.prototype.isPointInPath = function(x, y) {
+                // 给坐标添加微小偏移，但对同一域名保持一致
+                const offsetX = window.__domainFingerprint.noise(x, 0.0001);
+                const offsetY = window.__domainFingerprint.noise(y, 0.0001);
+                return originalIsPointInPath.call(this, offsetX, offsetY);
+              };
             }
-          });
-        } else {
-          newRect[key] = rect[key];
-        }
-      }
-      
-      return newRect;
-    };
-    
-    // 防止 getClientRects 指纹识别
-    Element.prototype.getClientRects = function() {
-      const rects = originalGetClientRects.apply(this, arguments);
-      
-      // 创建一个新的 DOMRectList 对象
-      const newRects = {};
-      Object.defineProperty(newRects, 'length', { value: rects.length });
-      
-      // 为每个 DOMRect 添加微小的噪声
-      for (let i = 0; i < rects.length; i++) {
-        const rect = rects[i];
-        const newRect = {};
-        
-        for (const key in rect) {
-          if (typeof rect[key] === 'number') {
-            // 为数值属性添加微小的噪声
-            Object.defineProperty(newRect, key, {
-              get: function() {
-                return rect[key] + (Math.random() * 0.02 - 0.01);
-              }
-            });
-          } else {
-            newRect[key] = rect[key];
+            
+            if (CanvasRenderingContext2D.prototype.isPointInStroke) {
+              const originalIsPointInStroke = CanvasRenderingContext2D.prototype.isPointInStroke;
+              CanvasRenderingContext2D.prototype.isPointInStroke = function(x, y) {
+                // 给坐标添加微小偏移，但对同一域名保持一致
+                const offsetX = window.__domainFingerprint.noise(x, 0.0001);
+                const offsetY = window.__domainFingerprint.noise(y, 0.0001);
+                return originalIsPointInStroke.call(this, offsetX, offsetY);
+              };
+            }
           }
-        }
-        
-        Object.defineProperty(newRects, i, { value: newRect });
-      }
-      
-      // 添加 item 方法
-      newRects.item = function(index) {
-        return this[index];
-      };
-      
-      return newRects;
-    };
-    
-    console.log('[指纹防护] RECTS 矩形防护已启用');
-  }
-  
-  
-  
-  console.log('[指纹防护] Brave 风格防护已启用');
-})();
+          
+          // 保护OffscreenCanvas (如果存在)
+          if (window.OffscreenCanvas) {
+            const originalConvertToBlob = OffscreenCanvas.prototype.convertToBlob;
+            if (originalConvertToBlob) {
+              OffscreenCanvas.prototype.convertToBlob = async function() {
+                // 在转换为Blob前对数据进行微调
+                const ctx = this.getContext('2d');
+                if (ctx) {
+                  const imageData = ctx.getImageData(0, 0, this.width, this.height);
+                  const data = imageData.data;
+                  // 每隔一定像素添加微小扰动
+                  for (let i = 0; i < data.length; i += 16) {
+                    data[i] = window.__domainFingerprint.pixelNoise(data[i], 5);
+                  }
+                  ctx.putImageData(imageData, 0, 0);
+                }
+                return originalConvertToBlob.apply(this, arguments);
+              };
+            }
+          }
+        })();

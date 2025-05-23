@@ -56,6 +56,19 @@ function initializeServices() {
       console.error('加载指纹测试平台管理器失败:', testError);
     }
     
+    // 在应用启动时更新指纹脚本
+    try {
+      if (enhancedFingerprintManager) {
+        console.log('正在执行初始化指纹脚本更新...');
+        // 使用增强指纹管理器的实例更新指纹脚本
+        const manager = new enhancedFingerprintManager.EnhancedFingerprintManager();
+        manager.updateFingerprintScripts();
+        console.log('初始化指纹脚本更新完成');
+      }
+    } catch (fingerprintError) {
+      console.error('初始化指纹脚本更新失败:', fingerprintError);
+    }
+    
     console.log('增强服务模块加载成功');
   } catch (error) {
     console.error('加载增强服务模块失败:', error);
@@ -343,8 +356,40 @@ function registerIPCHandlers() {
   });
 
   // 指纹管理
+  
+  // 更新指纹脚本文件
+  ipcMain.handle('update-fingerprint-scripts', (event) => {
+    try {
+      console.log('收到前端更新指纹脚本请求');
+      if (enhancedFingerprintManager) {
+        enhancedFingerprintManager.updateFingerprintScripts();
+        console.log('已成功更新指纹防护脚本文件');
+        return { success: true, message: '指纹脚本更新成功' };
+      } else {
+        console.warn('增强型指纹管理器未初始化');
+        return { success: false, message: '增强型指纹管理器未初始化' };
+      }
+    } catch (error) {
+      console.error('更新指纹脚本时出错:', error);
+      return { success: false, error: error.message };
+    }
+  });
+  
+  // 生成随机指纹
   ipcMain.handle('generate-random-fingerprint', (event, options) => {
-    return fingerprintManager.generateFingerprint(options);
+    try {
+      // 先更新指纹脚本文件
+      if (enhancedFingerprintManager) {
+        enhancedFingerprintManager.updateFingerprintScripts();
+        console.log('已更新指纹防护脚本文件');
+      }
+      
+      // 然后生成指纹
+      return fingerprintManager.generateFingerprint(options);
+    } catch (error) {
+      console.error('生成随机指纹时出错:', error);
+      throw error;
+    }
   });
 
   // 代理管理
@@ -1281,15 +1326,24 @@ function registerIPCHandlers() {
                       context = browser;
                     }
                     
-                    // 使用适配器的 navigateToUrl 方法
-                    await adapter.navigateToUrl(context, url, { waitUntil: 'networkidle' });
+                    // 使用适配器的 navigateToUrl 方法，并传递完整的配置信息
+                    await adapter.navigateToUrl(context, url, { 
+                      waitUntil: 'networkidle',
+                      // 传递配置文件给浏览器适配器，用于应用指纹防护
+                      profile: profile,
+                      // 标记是否为测试网站
+                      testMode: url.includes('yalala.com') || 
+                               url.includes('deviceinfo.me') || 
+                               url.includes('fingerprintjs.com') || 
+                               url.includes('amiunique.org') || 
+                               url.includes('browserleaks.com')
+                    });
                     console.log('成功在现有实例中打开URL');
                   } catch (navError) {
                     console.error('使用 navigateToUrl 方法失败:', navError);
                     throw navError;
                   }
-                }
-                // 如果没有 navigateToUrl 方法，尝试使用标准 Playwright 方法
+                }                // 如果没有 navigateToUrl 方法，尝试使用标准 Playwright 方法
                 else {
                   console.log('适配器没有 navigateToUrl 方法，尝试使用标准 Playwright 方法');
                   

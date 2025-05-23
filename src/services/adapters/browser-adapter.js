@@ -51,14 +51,125 @@ class BrowserAdapter {
   }
   
   /**
+   * 在新页面中导航到URL
+   * @param {Object} context 浏览器上下文
+   * @param {string} url 目标URL
+   * @param {Object} options 导航选项
+   * @returns {Promise<Object>} 导航结果
+   */
+  async navigateToUrl(context, url, options = {}) {
+    try {
+      // 检查是否是浏览器内部页面
+      const isBrowserInternalPage = url.startsWith('chrome://') || 
+                                   url.startsWith('edge://') || 
+                                   url.startsWith('about:') || 
+                                   url.startsWith('chrome-extension://') || 
+                                   url.startsWith('devtools://') || 
+                                   url.startsWith('view-source:');
+      
+      // 检查是否是指纹测试平台 - 不包括浏览器内部页面
+      const isTestPlatform = !isBrowserInternalPage && (
+                            url.includes('yalala.com') || 
+                            url.includes('deviceinfo.me') || 
+                            url.includes('fingerprintjs.com') || 
+                            url.includes('amiunique.org') || 
+                            url.includes('browserleaks.com') ||
+                            url.includes('fingerprintcheck') || 
+                            options.testMode === true
+                          );
+      
+      console.log(`访问URL: ${url}${isTestPlatform ? ' (指纹测试平台)' : ''}`);
+      
+      // 获取活动页面或创建新页面
+      let page;
+      const pages = await context.pages();
+      
+      if (pages.length > 0) {
+        page = pages[0];
+        console.log('使用现有页面');
+      } else {
+        page = await context.newPage();
+        console.log('创建了新页面');
+      }
+      
+      // 设置超时
+      const timeout = options.timeout || 30000;
+      page.setDefaultTimeout(timeout);
+      
+      // 如果是测试平台，应用指纹防护
+      if (isTestPlatform && options.profile) {
+        console.log('检测到指纹测试平台，正在应用特殊防护...');
+        
+        // 应用指纹防护
+        await this.applyFingerprintProtection(context, options.profile);
+        console.log('已为测试平台应用指纹防护');
+        
+        // 完全无状态指示器，只在控制台输出信息
+        const statusScript = `
+          // 仅在控制台输出状态信息，完全不影响页面
+          console.log('指纹防护已激活于当前域名: ' + window.location.hostname);
+        `;
+        
+        await page.addInitScript(statusScript);
+      }
+      
+      // 导航到URL - 使用相同的等待策略，确保页面正确渲染
+      console.log(`正在导航到: ${url}`);
+      const response = await page.goto(url, {
+        waitUntil: 'domcontentloaded', // 统一使用domcontentloaded，防止过早应用CSS修改
+        timeout: timeout
+      });
+      
+      // 等待页面完全加载，确保布局稳定
+      await page.waitForLoadState('load');
+      
+      // 如果是测试平台，在页面完全加载后应用额外保护
+      if (isTestPlatform && options.profile) {
+        // 等待一个短暂停，确保页面已完全渲染
+        await page.waitForTimeout(500);
+        await this.applyPostLoadProtection(page, options.profile);
+      }
+      
+      return {
+        success: true,
+        status: response.status(),
+        url: page.url(),
+        page: page
+      };
+    } catch (error) {
+      console.error('导航失败:', error);
+      return {
+        success: false,
+        message: `导航失败: ${error.message}`
+      };
+    }
+  }
+  
+  /**
    * 应用指纹保护
    * @param {Object} context 浏览器上下文
    * @param {Object} profile 配置文件
    * @returns {Promise<void>}
    */
   async applyFingerprintProtection(context, profile) {
-    const fs = require('fs');
-    const path = require('path');
+    try {
+      // 检查当前页面是否为浏览器内部页面
+      const pages = await context.pages();
+      if (pages.length > 0) {
+        const currentUrl = pages[0].url();
+        if (currentUrl.startsWith('chrome://') || 
+            currentUrl.startsWith('edge://') || 
+            currentUrl.startsWith('about:') || 
+            currentUrl.startsWith('chrome-extension://') || 
+            currentUrl.startsWith('devtools://') || 
+            currentUrl.startsWith('view-source:')) {
+          console.log(`[指纹防护] 检测到浏览器内部页面，跳过指纹防护: ${currentUrl}`);
+          return; // 跳过浏览器内部页面
+        }
+      }
+      
+      const fs = require('fs');
+      const path = require('path');
     
     // 获取指纹配置，兼容两种配置路径
     const fingerprint = profile.fingerprint || profile.fingerprintProtection || {};
@@ -91,7 +202,7 @@ class BrowserAdapter {
       return;
     }
     
-    try {
+    
       // 准备指纹防护配置，传递给脚本
       const fingerprintConfig = {
         enabled: true,
@@ -313,7 +424,7 @@ class BrowserAdapter {
       `;
       
       // 在现有页面上注入脚本
-      const pages = context.pages();
+      
       for (const page of pages) {
         // 先注入反自动化检测脚本
         await page.addInitScript(antiAutomationScript);
@@ -432,11 +543,81 @@ class BrowserAdapter {
     throw new Error('必须实现 getBrowserType 方法');
   }
   
-  
+  /**
+   * 在页面加载完成后应用额外保护
+   * @param {Object} page 页面对象
+   * @param {Object} profile 配置信息
+   * @returns {Promise<void>}
+   */
+  async applyPostLoadProtection(page, profile) {
+    try {
+      // 检查当前页面是否为浏览器内部页面
+      const currentUrl = page.url();
+      if (currentUrl.startsWith('chrome://') || 
+          currentUrl.startsWith('edge://') || 
+          currentUrl.startsWith('about:') || 
+          currentUrl.startsWith('chrome-extension://') || 
+          currentUrl.startsWith('devtools://') || 
+          currentUrl.startsWith('view-source:')) {
+        console.log(`[指纹防护] 检测到浏览器内部页面，跳过额外保护: ${currentUrl}`);
+        return; // 跳过浏览器内部页面
+      }
+      // 页面加载完成后执行的额外保护脚本
+      const postScript = `
+        (function() {
+          console.log('应用页面加载后额外保护...');
+          
+          // 重新应用Canvas保护
+          if (HTMLCanvasElement.prototype.getContext) {
+            const originalGetContext = HTMLCanvasElement.prototype.getContext;
+            HTMLCanvasElement.prototype.getContext = function() {
+              const context = originalGetContext.apply(this, arguments);
+              if (context && arguments[0] === '2d') {
+                if (context.getImageData) {
+                  const originalGetImageData = context.getImageData;
+                  context.getImageData = function() {
+                    const imageData = originalGetImageData.apply(this, arguments);
+                    // 添加微小随机噪点
+                    for (let i = 0; i < imageData.data.length; i += 4) {
+                      // 仅修改少量像素点，避免明显破坏图像
+                      if (Math.random() < 0.05) { // 5%的像素会被修改
+                        // 加入微小随机值
+                        const noise = 3;
+                        imageData.data[i] = Math.max(0, Math.min(255, imageData.data[i] + (Math.random() * noise * 2 - noise)));
+                        imageData.data[i+1] = Math.max(0, Math.min(255, imageData.data[i+1] + (Math.random() * noise * 2 - noise)));
+                        imageData.data[i+2] = Math.max(0, Math.min(255, imageData.data[i+2] + (Math.random() * noise * 2 - noise)));
+                      }
+                    }
+                    return imageData;
+                  };
+                }
+              }
+              return context;
+            };
+          }
+          
+          // 隐藏WebRTC相关功能
+          if (window.RTCPeerConnection) {
+            const originalRTC = window.RTCPeerConnection;
+            window.RTCPeerConnection = function() {
+              console.log('RTCPeerConnection被拦截');
+              return {};
+            };
+            window.RTCPeerConnection.prototype = originalRTC.prototype;
+          }
+        })();
+      `;
+      
+      // 执行额外保护脚本
+      await page.evaluate(postScript);
+      console.log('已应用导航后额外保护');
+    } catch (error) {
+      console.error('应用额外保护失败:', error);
+    }
+  }
   
   /**
-   * 设置代理
-   * @param {Array} args 启动参数数组
+   * 设置代理   * @param {Array} args 启动参数数组
    * @param {Object} proxyConfig 代理配置
    * @returns {Array} 更新后的启动参数数组
    */

@@ -10,14 +10,18 @@ const FingerprintTab = {
             <el-option label="Safari" value="safari"></el-option>
             <el-option label="Edge" value="edge"></el-option>
           </el-select>
+
         </el-form-item>
         
-        <el-form-item label="操作系统">
-          <el-select v-model="osType" placeholder="选择操作系统" @change="updateUserAgent">
+        <el-form-item label="操作系统/平台">
+          <el-select v-model="osType" placeholder="选择操作系统" @change="updateUserAgentAndPlatform">
             <el-option label="Windows" value="windows"></el-option>
             <el-option label="macOS" value="macos"></el-option>
             <el-option label="Linux" value="linux"></el-option>
           </el-select>
+          <div style="margin-top: 5px; color: #909399; font-size: 12px;">
+            <span>平台值: {{ platformDisplay }}</span>
+          </div>
         </el-form-item>
         
         <el-form-item label="User-Agent">
@@ -25,14 +29,6 @@ const FingerprintTab = {
           <div style="margin-top: 5px;">
             <el-button size="small" @click="generateRandomUserAgent">随机生成</el-button>
           </div>
-        </el-form-item>
-        
-        <el-form-item label="平台">
-          <el-select v-model="localFingerprint.platform" placeholder="选择平台">
-            <el-option label="Windows" value="Win32"></el-option>
-            <el-option label="macOS" value="MacIntel"></el-option>
-            <el-option label="Linux" value="Linux x86_64"></el-option>
-          </el-select>
         </el-form-item>
         
         <el-form-item label="语言">
@@ -60,6 +56,9 @@ const FingerprintTab = {
               <el-input-number v-model="localFingerprint.screenHeight" :min="600" :max="2160" placeholder="高度"></el-input-number>
             </el-col>
           </el-row>
+          <div style="margin-top: 5px; color: #909399; font-size: 12px;">
+            <span>此设置将同步到启动选项中的窗口大小</span>
+          </div>
         </el-form-item>
         
         <el-divider content-position="left">高级指纹保护</el-divider>
@@ -157,9 +156,22 @@ const FingerprintTab = {
           <el-select v-model="localFingerprint.protectionMode" placeholder="选择防护模式">
             <el-option label="标准模式" value="standard"></el-option>
             <el-option label="增强模式 (Brave 风格)" value="brave"></el-option>
+            <el-option label="平衡模式 (兼容性更好)" value="balanced"></el-option>
           </el-select>
           <div class="setting-description">
-            增强模式使用 Brave 浏览器风格的防护技术，提供更强大的指纹保护
+            增强模式提供最强的防护，平衡模式在防护和兼容性之间取得平衡
+          </div>
+        </el-form-item>
+        
+        <el-form-item label="网站兼容性列表">
+          <el-input
+            type="textarea"
+            :rows="3"
+            placeholder="输入需要兼容模式的网站域名，每行一个，如: aliyun.com"
+            v-model="localFingerprint.compatibleSites">
+          </el-input>
+          <div class="setting-description">
+            对这些网站使用兼容模式，减少指纹防护强度，解决验证码问题
           </div>
         </el-form-item>
         
@@ -244,25 +256,165 @@ const FingerprintTab = {
         pluginDataProtection: true,
         rectsProtection: true,
         timezoneProtection: true,
-        protectionMode: 'standard',
+        protectionMode: 'balanced', // 默认使用平衡模式
+        compatibleSites: '', // 默认兼容网站
         randomSeed: Math.floor(Math.random() * 2147483647) // 默认随机种子
       },
       browserType: 'chrome',
       osType: 'windows',
       testPlatform: 'yalala',
-      testResults: null
+      testResults: null,
+      showAdvancedSettings: false,
+      // 添加标志位，防止递归更新
+      isUpdatingScreenSize: false,
+      isUpdatingWindowSize: false,
+      isUpdatingBrowserOS: false // 防止浏览器和操作系统联动时无限递归
     };
   },
   
+  computed: {
+    // 平台显示值
+    platformDisplay() {
+      if (!this.localFingerprint.platform) {
+        // 根据操作系统类型返回默认平台值
+        switch (this.osType) {
+          case 'windows':
+            return 'Win32';
+          case 'macos':
+            return 'MacIntel';
+          case 'linux':
+            return 'Linux x86_64';
+          default:
+            return 'Win32';
+        }
+      }
+      return this.localFingerprint.platform;
+    }
+  },
+  
+  mounted() {
+    // 初始化时，从 profile 中加载指纹配置
+    if (this.profile && this.profile.fingerprint) {
+      // 保存默认的兼容网站列表
+      const defaultCompatibleSites = this.localFingerprint.compatibleSites;
+      
+      // 合并配置
+      this.localFingerprint = { ...this.localFingerprint, ...this.profile.fingerprint };
+      
+      // 如果profile中的compatibleSites为空，则使用默认值
+      if (!this.localFingerprint.compatibleSites) {
+        this.localFingerprint.compatibleSites = defaultCompatibleSites;
+      }
+      
+      this.detectBrowserAndOS();
+    }
+  },
+  
   watch: {
+    // 监听浏览器类型变化
+    browserType(newVal) {
+      // 防止递归更新
+      if (this.isUpdatingBrowserOS) {
+        return;
+      }
+      
+      this.isUpdatingBrowserOS = true;
+      
+      // 如果选择了Safari浏览器，强制使用macOS
+      if (newVal === 'safari' && this.osType !== 'macos') {
+        this.osType = 'macos';
+        this.$message.info('Safari浏览器只能在macOS上运行，已自动切换操作系统');
+      }
+      
+      // 更新User-Agent
+      this.updateUserAgentAndPlatform();
+      
+      // 重置标志位
+      this.$nextTick(() => {
+        this.isUpdatingBrowserOS = false;
+      });
+    },
+    
+    // 监听操作系统类型变化
+    osType(newVal, oldVal) {
+      // 防止递归更新
+      if (this.isUpdatingBrowserOS) {
+        return;
+      }
+      
+      this.isUpdatingBrowserOS = true;
+      
+      // 如果当前是Safari浏览器，但操作系统不是macOS，则强制使用Chrome
+      if (this.browserType === 'safari' && newVal !== 'macos') {
+        this.browserType = 'chrome';
+        this.$message.info('Safari浏览器只能在macOS上运行，已自动切换为Chrome浏览器');
+      }
+      
+      // 更新User-Agent和平台值
+      this.updateUserAgentAndPlatform();
+      
+      // 重置标志位
+      this.$nextTick(() => {
+        this.isUpdatingBrowserOS = false;
+      });
+    },
+    
     localFingerprint: {
       handler(val) {
+        // 防止递归更新
+        if (this.isUpdatingScreenSize) {
+          return;
+        }
+        
+        // 更新指纹配置
         this.$emit('update:profile', { 
           ...this.profile, 
           fingerprint: val 
         });
+        
+        // 在指纹设置变化时更新指纹脚本
+        this.updateFingerprintScripts();
+        
+        // 如果屏幕分辨率发生变化，才同步到窗口大小
+        if (!this.isUpdatingWindowSize && 
+            (this.profile.startup?.windowWidth !== val.screenWidth || 
+             this.profile.startup?.windowHeight !== val.screenHeight)) {
+          this.syncScreenResolutionToWindowSize();
+        }
       },
       deep: true
+    },
+    'localFingerprint.screenWidth': function(newVal) {
+      // 当屏幕宽度变化时同步到窗口宽度
+      if (this.profile.startup && newVal && !this.isUpdatingScreenSize) {
+        this.isUpdatingWindowSize = true;
+        this.$emit('update:profile', {
+          ...this.profile,
+          startup: {
+            ...this.profile.startup,
+            windowWidth: newVal
+          }
+        });
+        this.$nextTick(() => {
+          this.isUpdatingWindowSize = false;
+        });
+      }
+    },
+    'localFingerprint.screenHeight': function(newVal) {
+      // 当屏幕高度变化时同步到窗口高度
+      if (this.profile.startup && newVal && !this.isUpdatingScreenSize) {
+        this.isUpdatingWindowSize = true;
+        this.$emit('update:profile', {
+          ...this.profile,
+          startup: {
+            ...this.profile.startup,
+            windowHeight: newVal
+          }
+        });
+        this.$nextTick(() => {
+          this.isUpdatingWindowSize = false;
+        });
+      }
     },
     'profile.fingerprint': {
       handler(val) {
@@ -271,59 +423,228 @@ const FingerprintTab = {
       },
       immediate: true,
       deep: true
+    },
+    'profile.startup': {
+      handler(val) {
+        // 如果启动选项中的窗口大小变化，同步到屏幕分辨率
+        if (val && val.windowWidth && val.windowHeight && !this.isUpdatingWindowSize) {
+          this.isUpdatingScreenSize = true;
+          
+          // 仅当值不同时才更新，避免不必要的更新
+          if (this.localFingerprint.screenWidth !== val.windowWidth) {
+            this.localFingerprint.screenWidth = val.windowWidth;
+          }
+          if (this.localFingerprint.screenHeight !== val.windowHeight) {
+            this.localFingerprint.screenHeight = val.windowHeight;
+          }
+          
+          this.$nextTick(() => {
+            this.isUpdatingScreenSize = false;
+          });
+        }
+      },
+      immediate: true,
+      deep: true
     }
   },
   
   methods: {
+    /**
+     * 更新指纹防护脚本
+     * 在指纹设置变化时调用
+     */
+    updateFingerprintScripts() {
+      try {
+        console.log('通知后端更新指纹防护脚本...');
+        // 调用自定义 IPC 方法更新指纹脚本
+        window.ipcRenderer.invoke('update-fingerprint-scripts')
+          .then(() => {
+            console.log('指纹脚本更新成功');
+          })
+          .catch(error => {
+            console.error('指纹脚本更新失败:', error);
+          });
+      } catch (error) {
+        console.error('更新指纹脚本时出错:', error);
+      }
+    },
+    
     detectBrowserAndOS() {
+      // 防止递归更新
+      if (this.isUpdatingBrowserOS) {
+        return;
+      }
+      
       const ua = this.localFingerprint.userAgent || '';
+      let detectedBrowser = '';
+      let detectedOS = '';
       
       // 检测浏览器类型
-      if (ua.includes('Firefox/')) {
-        this.browserType = 'firefox';
-      } else if (ua.includes('Safari/') && ua.includes('Chrome/')) {
-        this.browserType = 'chrome';
+      if (ua.includes('Edg/')) {
+        // Edge 需要放在最前面检测，因为它的 UA 也包含 Chrome 和 Safari
+        detectedBrowser = 'edge';
+      } else if (ua.includes('Firefox/')) {
+        detectedBrowser = 'firefox';
       } else if (ua.includes('Safari/') && !ua.includes('Chrome/')) {
-        this.browserType = 'safari';
-      } else if (ua.includes('Edg/')) {
-        this.browserType = 'edge';
+        detectedBrowser = 'safari';
+      } else if (ua.includes('Chrome/')) {
+        detectedBrowser = 'chrome';
       } else {
-        this.browserType = 'chrome';
+        detectedBrowser = 'chrome';
       }
       
       // 检测操作系统
       if (ua.includes('Windows')) {
-        this.osType = 'windows';
+        detectedOS = 'windows';
       } else if (ua.includes('Macintosh') || ua.includes('Mac OS X')) {
-        this.osType = 'macos';
+        detectedOS = 'macos';
       } else if (ua.includes('Linux')) {
-        this.osType = 'linux';
+        detectedOS = 'linux';
       } else {
-        this.osType = 'windows';
+        detectedOS = 'windows';
+      }
+      
+      // 检查兼容性
+      if (detectedBrowser === 'safari' && detectedOS !== 'macos') {
+        // Safari 只能在 macOS 上运行，如果检测到不匹配，使用 macOS
+        detectedOS = 'macos';
+      }
+      
+      // 设置防递归标志
+      this.isUpdatingBrowserOS = true;
+      
+      // 只有当检测到的值与当前值不同时才更新，避免循环触发监听器
+      let browserChanged = false;
+      let osChanged = false;
+      
+      if (this.browserType !== detectedBrowser) {
+        this.browserType = detectedBrowser;
+        browserChanged = true;
+      }
+      
+      if (this.osType !== detectedOS) {
+        this.osType = detectedOS;
+        osChanged = true;
+      }
+      
+      // 重置标志位
+      this.$nextTick(() => {
+        this.isUpdatingBrowserOS = false;
+      });
+    },
+    
+    updateUserAgentAndPlatform() {
+      // 防止递归更新
+      if (this.isUpdatingBrowserOS) {
+        return;
+      }
+      
+      this.isUpdatingBrowserOS = true;
+      
+      // 检查浏览器和操作系统的兼容性，但不触发通知
+      let needUpdateOS = false;
+      let needUpdateBrowser = false;
+      
+      if (this.browserType === 'safari' && this.osType !== 'macos') {
+        // Safari 只能在 macOS 上运行
+        needUpdateOS = true;
+      }
+      
+      // 生成新的 User-Agent
+      this.generateRandomUserAgent();
+      
+      // 根据操作系统类型自动设置平台值
+      this.updatePlatformBasedOnOS();
+      
+      // 重置标志位
+      this.$nextTick(() => {
+        this.isUpdatingBrowserOS = false;
+        
+        // 如果需要更新OS，在重置标志位后再更新
+        if (needUpdateOS) {
+          this.osType = 'macos';
+        }
+        
+        if (needUpdateBrowser) {
+          this.browserType = 'chrome';
+        }
+      });
+    },
+    
+    /**
+     * 根据操作系统类型更新平台值
+     */
+    updatePlatformBasedOnOS() {
+      switch (this.osType) {
+        case 'windows':
+          this.localFingerprint.platform = 'Win32';
+          break;
+        case 'macos':
+          this.localFingerprint.platform = 'MacIntel';
+          break;
+        case 'linux':
+          this.localFingerprint.platform = 'Linux x86_64';
+          break;
+        default:
+          this.localFingerprint.platform = 'Win32';
       }
     },
     
     updateUserAgent() {
-      // 根据选择的浏览器和操作系统更新 User-Agent
-      this.generateRandomUserAgent();
+      // 兼容旧版本的方法
+      this.updateUserAgentAndPlatform();
     },
     
     async generateRandomUserAgent() {
       try {
+        // 防止递归更新
+        if (this.isUpdatingBrowserOS) {
+          return;
+        }
+        
+        this.isUpdatingBrowserOS = true;
+        
+        // 检查浏览器和操作系统兼容性，但不触发通知
+        let needUpdateOS = false;
+        
+        if (this.browserType === 'safari' && this.osType !== 'macos') {
+          needUpdateOS = true;
+        }
+        
         // 确保随机种子存在，如果不存在则生成
         const seed = this.ensureRandomSeed();
         
         const options = {
-          browser: this.browserType,
-          os: this.osType,
+          browser: needUpdateOS ? 'safari' : this.browserType,
+          browserType: needUpdateOS ? 'safari' : this.browserType, // 同时传递 browserType 参数以兼容后端
+          os: needUpdateOS ? 'macos' : this.osType,
           // 传递随机种子
-          randomSeed: seed
+          randomSeed: seed,
+          // 传阒用户选择的语言
+          language: this.localFingerprint.language
         };
         
         const fingerprint = await window.ipcRenderer.invoke('generate-random-fingerprint', options);
         this.localFingerprint.userAgent = fingerprint.userAgent;
         this.localFingerprint.platform = fingerprint.platform;
+        
+        // 先更新平台值
+        this.updatePlatformBasedOnOS();
+        
+        // 在标志位重置后再更新操作系统和浏览器类型
+        this.$nextTick(() => {
+          this.isUpdatingBrowserOS = false;
+          
+          // 如果需要更新OS，在重置标志位后再更新
+          if (needUpdateOS) {
+            this.osType = 'macos';
+          }
+          
+          // 检测生成的 User-Agent 是否与所选浏览器和操作系统匹配
+          this.detectBrowserAndOS();
+        });
       } catch (error) {
+        this.isUpdatingBrowserOS = false;
         this.$message.error('生成随机 User-Agent 失败: ' + error.message);
       }
     },
@@ -348,6 +669,49 @@ const FingerprintTab = {
         return this.generateRandomSeed();
       }
       return this.localFingerprint.randomSeed;
+    },
+    
+    /**
+     * 同步屏幕分辨率到窗口大小
+     */
+    syncScreenResolutionToWindowSize() {
+      // 如果正在更新屏幕分辨率，则跳过以避免递归
+      if (this.isUpdatingScreenSize) {
+        return;
+      }
+      
+      // 确保 profile.startup 存在
+      if (!this.profile.startup) {
+        this.profile.startup = {};
+      }
+      
+      // 设置标志位防止递归
+      this.isUpdatingWindowSize = true;
+      
+      // 同步屏幕分辨率到窗口大小
+      if (this.localFingerprint.screenWidth && this.localFingerprint.screenHeight) {
+        // 只有当值不同时才更新
+        const currentWidth = this.profile.startup.windowWidth;
+        const currentHeight = this.profile.startup.windowHeight;
+        const newWidth = this.localFingerprint.screenWidth;
+        const newHeight = this.localFingerprint.screenHeight;
+        
+        if (currentWidth !== newWidth || currentHeight !== newHeight) {
+          this.$emit('update:profile', {
+            ...this.profile,
+            startup: {
+              ...this.profile.startup,
+              windowWidth: newWidth,
+              windowHeight: newHeight
+            }
+          });
+        }
+      }
+      
+      // 重置标志位
+      this.$nextTick(() => {
+        this.isUpdatingWindowSize = false;
+      });
     },
     
     /**
