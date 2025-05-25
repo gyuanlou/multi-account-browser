@@ -226,11 +226,11 @@ jobs:
           echo "## 中文 | [English](#multi-account-browser-v${{ steps.get_version.outputs.version }})" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           echo "### 更新内容" >> CHANGELOG.md        
-          echo "- 改进了指纹防护系统，添加了随机种子一致性机制" >> CHANGELOG.md
-          echo "- 增强了Canvas、音频和WebRTC指纹防护功能" >> CHANGELOG.md
-          echo "- 修复了RECTS矩形防护配置的保存和加载问题" >> CHANGELOG.md
-          echo "- 为新配置文件添加了自动随机种子生成功能" >> CHANGELOG.md
-          echo "- 提高了多个浏览器实例之间的指纹一致性" >> CHANGELOG.md
+          echo "- 改进浏览器适配器下载功能，确保所有浏览器能正确保存文件名" >> CHANGELOG.md
+          echo "- 将文件名处理方法移至基类，减少代码重复" >> CHANGELOG.md
+          echo "- 添加对空文件名或无效文件名的处理，自动生成基于时间戳的文件名" >> CHANGELOG.md
+          echo "- 增强文件扩展名识别功能，支持从URL和Content-Type中提取扩展名" >> CHANGELOG.md
+          echo "- 修复Edge、Firefox和Safari适配器下载处理中的潜在问题" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           echo "### 下载地址" >> CHANGELOG.md
           echo "- [Windows 版本](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/multi-account-browser-${{ steps.get_version.outputs.version }}-windows.exe)" >> CHANGELOG.md
@@ -246,11 +246,11 @@ jobs:
           echo "## English | [中文](#多账号浏览器-v${{ steps.get_version.outputs.version }})" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           echo "### Updates" >> CHANGELOG.md       
-          echo "- Improved fingerprint protection with consistent random seed mechanism" >> CHANGELOG.md
-          echo "- Enhanced Canvas, Audio and WebRTC fingerprint protection" >> CHANGELOG.md
-          echo "- Fixed RECTS protection configuration saving and loading" >> CHANGELOG.md
-          echo "- Added automatic random seed generation for new profiles" >> CHANGELOG.md
-          echo "- Improved fingerprint consistency across multiple browser instances" >> CHANGELOG.md
+          echo "- Improved browser adapter download functionality to ensure correct filename handling across all browsers" >> CHANGELOG.md
+          echo "- Moved filename handling methods to base class, reducing code duplication" >> CHANGELOG.md
+          echo "- Added handling for empty or invalid filenames, automatically generating timestamp-based filenames" >> CHANGELOG.md
+          echo "- Enhanced file extension recognition, supporting extraction from URLs and Content-Type" >> CHANGELOG.md
+          echo "- Fixed potential issues in Edge, Firefox and Safari adapters' download handling" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           echo "### Downloads" >> CHANGELOG.md
           echo "- [Windows Version](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/multi-account-browser-${{ steps.get_version.outputs.version }}-windows.exe)" >> CHANGELOG.md
