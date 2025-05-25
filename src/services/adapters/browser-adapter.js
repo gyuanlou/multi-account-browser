@@ -722,6 +722,74 @@ class BrowserAdapter {
   async cleanupUserData(userDataDir) { 
     throw new Error('必须实现 cleanupUserData 方法'); 
   }
+  
+  /**
+   * 清理文件名，移除不合法字符
+   * @param {string} filename 原始文件名
+   * @returns {string} 清理后的文件名
+   * @protected
+   */
+  _sanitizeFilename(filename) {
+    if (!filename) return 'download';
+    
+    // 替换Windows和通用操作系统中不允许的文件名字符
+    return filename
+      .replace(/[\\/:*?"<>|]/g, '_') // 替换Windows不允许的字符
+      .replace(/\s+/g, '_')           // 替换空白字符为下划线
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g, ''); // 移除控制字符
+  }
+  
+  /**
+   * 从URL中获取可能的文件扩展名
+   * @param {string} url 下载URL
+   * @returns {string|null} 文件扩展名（不包含点）或null
+   * @protected
+   */
+  _getFileExtensionFromUrl(url) {
+    if (!url) return 'bin';
+    
+    try {
+      // 尝试从URL路径中提取文件名
+      const urlObj = new URL(url);
+      const pathname = urlObj.pathname;
+      const filename = pathname.split('/').pop();
+      
+      // 如果文件名包含扩展名
+      if (filename && filename.includes('.')) {
+        return filename.split('.').pop().toLowerCase();
+      }
+      
+      // 从Content-Type推断扩展名
+      const contentType = urlObj.searchParams.get('contentType') || 
+                          urlObj.searchParams.get('content-type') || 
+                          urlObj.searchParams.get('type');
+      
+      if (contentType) {
+        // 简单的MIME类型到扩展名映射
+        const mimeToExt = {
+          'application/pdf': 'pdf',
+          'image/jpeg': 'jpg',
+          'image/png': 'png',
+          'image/gif': 'gif',
+          'text/html': 'html',
+          'text/plain': 'txt',
+          'application/json': 'json',
+          'application/zip': 'zip',
+          'application/x-msdownload': 'exe',
+          'application/vnd.ms-excel': 'xls',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+          'application/msword': 'doc',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx'
+        };
+        
+        return mimeToExt[contentType] || 'bin';
+      }
+    } catch (error) {
+      console.error('从URL获取文件扩展名时出错:', error);
+    }
+    
+    return 'bin'; // 默认二进制文件扩展名
+  }
 }
 
 module.exports = BrowserAdapter;

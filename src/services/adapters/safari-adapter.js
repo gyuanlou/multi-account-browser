@@ -139,14 +139,28 @@ class SafariAdapter extends BrowserAdapter {
         try {
           const downloadPath = launchOptions.downloadsPath;
           if (downloadPath) {
-            const suggestedFilename = await download.suggestedFilename();
+            // 获取建议的文件名并确保它是有效的
+            let suggestedFilename = await download.suggestedFilename();
+            
+            // 如果文件名为空或无效，生成一个基于时间戳的默认文件名
+            if (!suggestedFilename || suggestedFilename.trim() === '') {
+              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+              const fileExt = this._getFileExtensionFromUrl(download.url()) || 'bin';
+              suggestedFilename = `download-${timestamp}.${fileExt}`;
+              console.log(`Safari下载: 生成默认文件名 ${suggestedFilename}`);
+            }
+            
+            // 确保文件名不包含非法字符
+            suggestedFilename = this._sanitizeFilename(suggestedFilename);
+            
             const savePath = path.join(downloadPath, suggestedFilename);
+            console.log(`Safari下载: 保存文件到 ${savePath}`);
             
             // 使用 Playwright 的 saveAs 方法指定文件名和保存路径
             await download.saveAs(savePath);
             
             // 添加延时，确保文件完全保存
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 1000));
             
             // 注入脚本以修改下载项的打开文件夹功能
             await page.evaluate((downloadDir) => {
@@ -492,6 +506,8 @@ class SafariAdapter extends BrowserAdapter {
     }
     return true;
   }
+
+
 }
 
 module.exports = SafariAdapter;
