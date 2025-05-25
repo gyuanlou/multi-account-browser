@@ -3,6 +3,8 @@
  * 为不同浏览器提供统一的接口
  * 基于 Playwright API 实现
  */
+const fs = require('fs');
+const path = require('path');
 class BrowserAdapter {
   constructor() {
     if (this.constructor === BrowserAdapter) {
@@ -724,19 +726,43 @@ class BrowserAdapter {
   }
   
   /**
-   * 清理文件名，移除不合法字符
+   * 清理文件名，移除不合法字符，同时保留文件后缀名
    * @param {string} filename 原始文件名
    * @returns {string} 清理后的文件名
    * @protected
    */
   _sanitizeFilename(filename) {
-    if (!filename) return 'download';
+    if (!filename) return 'download.bin';
     
-    // 替换Windows和通用操作系统中不允许的文件名字符
-    return filename
+    // 分离文件名和扩展名
+    let baseName = filename;
+    let extension = '';
+    
+    const lastDotIndex = filename.lastIndexOf('.');
+    if (lastDotIndex > 0) { // 确保点不在文件名开头
+      baseName = filename.substring(0, lastDotIndex);
+      extension = filename.substring(lastDotIndex); // 包含点
+    }
+    
+    // 清理基本文件名
+    const cleanedBaseName = baseName
       .replace(/[\\/:*?"<>|]/g, '_') // 替换Windows不允许的字符
       .replace(/\s+/g, '_')           // 替换空白字符为下划线
       .replace(/[\u0000-\u001F\u007F-\u009F]/g, ''); // 移除控制字符
+    
+    // 清理扩展名（只移除非法字符，保留点）
+    const cleanedExtension = extension
+      .replace(/[\\/:*?"<>|]/g, '') 
+      .replace(/\s+/g, '')
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+    
+    // 如果清理后的文件名为空，使用默认名称
+    const finalBaseName = cleanedBaseName || 'download';
+    
+    // 如果清理后的扩展名无效（只有点或为空），使用.bin
+    const finalExtension = (cleanedExtension && cleanedExtension !== '.') ? cleanedExtension : '.bin';
+    
+    return finalBaseName + finalExtension;
   }
   
   /**
@@ -789,6 +815,116 @@ class BrowserAdapter {
     }
     
     return 'bin'; // 默认二进制文件扩展名
+  }
+  
+  /**
+   * 通用的下载处理方法
+   * @param {Object} download Playwright下载对象
+   * @param {string} downloadDir 下载目录
+   * @param {string} browserName 浏览器名称（用于日志）
+   * @returns {Promise<{success: boolean, path: string, error: string|null}>} 下载结果
+   * @protected
+   */
+  async _handleDownload(download, downloadDir, browserName) {
+    try {
+      // 确保下载目录存在
+      if (!fs.existsSync(downloadDir)) {
+        fs.mkdirSync(downloadDir, { recursive: true });
+        console.log(`${browserName}下载: 创建下载目录 ${downloadDir}`);
+      }
+      
+      // 获取默认下载路径（UUID格式的临时文件）
+      const defaultPath = await download.path();
+      console.log(`${browserName}下载: 默认下载路径 ${defaultPath}`);
+      
+      // 获取建议的文件名并确保它是有效的
+      let suggestedFilename = await download.suggestedFilename();
+      console.log(`${browserName}下载: 原始建议文件名 ${suggestedFilename}`);
+      
+      // 确保文件名不包含非法字符
+      suggestedFilename = this._sanitizeFilename(suggestedFilename);
+      
+      // 如果文件名为空或无效，生成一个基于时间戳的默认文件名
+      if (!suggestedFilename || suggestedFilename.trim() === '') {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const fileExt = this._getFileExtensionFromUrl(download.url()) || 'bin';
+        suggestedFilename = `download-${timestamp}.${fileExt}`;
+        console.log(`${browserName}下载: 生成默认文件名 ${suggestedFilename}`);
+      } else if (!suggestedFilename.includes('.')) {
+        // 确保文件名包含正确的扩展名
+        const fileExt = this._getFileExtensionFromUrl(download.url()) || 'bin';
+        suggestedFilename = `${suggestedFilename}.${fileExt}`;
+        console.log(`${browserName}下载: 添加扩展名后的文件名 ${suggestedFilename}`);
+      }
+      
+      // 在保存前先检查文件名是否重复，如果重复则自动重命名
+      const fileExt = path.extname(suggestedFilename);
+      const fileNameWithoutExt = path.basename(suggestedFilename, fileExt);
+      let finalFilename = suggestedFilename;
+      let savePath = path.join(downloadDir, finalFilename);
+      
+      // 检查文件是否存在，如果存在则自动重命名
+      let counter = 1;
+      while (fs.existsSync(savePath)) {
+        finalFilename = `${fileNameWithoutExt}(${counter})${fileExt}`;
+        savePath = path.join(downloadDir, finalFilename);
+        counter++;
+      }
+      
+      if (finalFilename !== suggestedFilename) {
+        console.log(`${browserName}下载: 文件已存在，重命名为 ${finalFilename}`);
+        suggestedFilename = finalFilename;
+      }
+      
+      console.log(`${browserName}下载: 准备保存文件到 ${savePath}`);
+      
+      // 尝试使用不同的方法保存文件
+      try {
+        // 首先尝试使用saveAs方法直接保存
+        await download.saveAs(savePath);
+        console.log(`${browserName}下载: 使用saveAs保存文件到 ${savePath}`);
+      } catch (saveError) {
+        console.error(`${browserName}下载: saveAs失败 ${saveError.message}`);
+        
+        // 如果saveAs失败，尝试手动复制文件
+        if (defaultPath && fs.existsSync(defaultPath)) {
+          try {
+            fs.copyFileSync(defaultPath, savePath);
+            console.log(`${browserName}下载: 手动复制文件到 ${savePath}`);
+          } catch (copyError) {
+            console.error(`${browserName}下载: 手动复制失败 ${copyError.message}`);
+            return { success: false, path: null, error: `无法保存文件: ${copyError.message}` };
+          }
+        } else {
+          return { success: false, path: null, error: '无法保存文件，且找不到默认下载路径' };
+        }
+      }
+      
+      // 添加延时，确保文件完全保存
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // 检查文件是否存在
+      if (fs.existsSync(savePath)) {
+        // 只删除当前下载的UUID格式临时文件
+        if (defaultPath && fs.existsSync(defaultPath)) {
+          try {
+            fs.unlinkSync(defaultPath);
+            console.log(`${browserName}下载: 删除UUID格式的临时文件 ${defaultPath}`);
+          } catch (err) {
+            console.error(`${browserName}下载: 删除UUID格式的临时文件失败 ${err.message}`);
+          }
+        }
+        
+        console.log(`${browserName}下载: 文件成功保存到 ${savePath}`);
+        return { success: true, path: savePath, error: null };
+      } else {
+        console.error(`${browserName}下载: 文件保存失败 ${savePath}`);
+        return { success: false, path: null, error: '文件保存失败' };
+      }
+    } catch (error) {
+      console.error(`${browserName}下载: 处理下载失败 ${error.message}`);
+      return { success: false, path: null, error: error.message };
+    }
   }
 }
 

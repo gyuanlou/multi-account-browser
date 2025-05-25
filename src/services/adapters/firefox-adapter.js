@@ -245,72 +245,18 @@ class FirefoxAdapter extends BrowserAdapter {
         try {
           const downloadPath = launchOptions.firefoxUserPrefs['browser.download.dir'];
           if (downloadPath) {
-            // 获取建议的文件名并确保它是有效的
-            let suggestedFilename = await download.suggestedFilename();
+            // 使用基类中的通用下载处理方法
+            const result = await this._handleDownload(download, downloadPath, 'Firefox');
             
-            // 如果文件名为空或无效，生成一个基于时间戳的默认文件名
-            if (!suggestedFilename || suggestedFilename.trim() === '') {
-              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-              const fileExt = this._getFileExtensionFromUrl(download.url()) || 'bin';
-              suggestedFilename = `download-${timestamp}.${fileExt}`;
-              console.log(`Firefox下载: 生成默认文件名 ${suggestedFilename}`);
-            }
-            
-            // 确保文件名不包含非法字符
-            suggestedFilename = this._sanitizeFilename(suggestedFilename);
-            
-            const savePath = path.join(downloadPath, suggestedFilename);
-            console.log(`Firefox下载: 保存文件到 ${savePath}`);
-            
-            // 使用 Playwright 的 saveAs 方法指定文件名和保存路径
-            await download.saveAs(savePath);
-            
-            // 添加延时，确保文件完全保存
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // 注入脚本以修改下载项的打开文件夹功能
-            await page.evaluate((downloadDir) => {
-              // 等待下载管理器页面加载完成
-              setTimeout(() => {
-                // 查找所有「打开文件夹」按钮并修改其行为
-                const observer = new MutationObserver((mutations) => {
-                  const buttons = document.querySelectorAll('button[title="打开文件夹"], button[title="Open folder"], button[aria-label="打开文件夹"], button[aria-label="Open folder"]');
-                  
-                  buttons.forEach(button => {
-                    if (!button.hasAttribute('data-modified')) {
-                      button.setAttribute('data-modified', 'true');
-                      
-                      // 替换原有的点击事件
-                      button.addEventListener('click', (event) => {
-                        event.stopPropagation();
-                        event.preventDefault();
-                        
-                        // 使用自定义消息通知主进程打开文件夹
-                        window.postMessage({
-                          type: 'OPEN_DOWNLOAD_FOLDER',
-                          path: downloadDir
-                        }, '*');
-                        
-                        return false;
-                      }, true);
-                    }
-                  });
-                });
-                
-                // 开始观察 DOM 变化
-                observer.observe(document.body, { childList: true, subtree: true });
-                
-                // 添加消息监听器，接收来自主进程的响应
-                window.addEventListener('message', (event) => {
-                  // 当收到文件夹打开消息时处理
-                  if (event.data && event.data.type === 'FOLDER_OPENED') {
-                    // 文件夹已打开
-                  }
-                });
-              }, 1000);
-            }, downloadPath);
+            if (!result.success) {
+              console.error(`Firefox下载失败: ${result.error}`);
+            } else {
+              console.log(`Firefox下载: 文件已保存到 ${result.path}`);
+              
+               
           }
-        } catch (error) {
+        }
+      }catch (error) {
           console.error(`下载处理出错: ${error.message}`);
         }
       });

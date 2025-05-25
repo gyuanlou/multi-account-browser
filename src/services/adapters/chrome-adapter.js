@@ -359,70 +359,18 @@ class ChromeAdapter extends BrowserAdapter {
           if (downloadPath) {
             const downloadDir = downloadPath.split('=')[1];
             
-            // 获取建议的文件名并确保它是有效的
-            let suggestedFilename = await download.suggestedFilename();
+            // 使用基类的通用下载处理方法
+            const result = await this._handleDownload(download, downloadDir, 'Chrome');
             
-            // 如果文件名为空或无效，生成一个基于时间戳的默认文件名
-            if (!suggestedFilename || suggestedFilename.trim() === '') {
-              const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-              const fileExt = this._getFileExtensionFromUrl(download.url()) || 'bin';
-              suggestedFilename = `download-${timestamp}.${fileExt}`;
-              console.log(`Chrome下载: 生成默认文件名 ${suggestedFilename}`);
+            if (!result.success) {
+              console.error(`Chrome下载失败: ${result.error}`);
+            } else {
+              console.log(`Chrome下载成功: ${result.path}`);
+              
+              // 获取文件名（从路径中提取）
+              const filename = path.basename(result.path);
             }
-            
-            // 确保文件名不包含非法字符
-            suggestedFilename = this._sanitizeFilename(suggestedFilename);
-            
-            const savePath = path.join(downloadDir, suggestedFilename);
-            console.log(`Chrome下载: 保存文件到 ${savePath}`);
-            
-            // 使用 Playwright 的 saveAs 方法指定文件名和保存路径
-            await download.saveAs(savePath);
-            
-            // 添加延时，确保文件完全保存
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // 注入脚本以修改下载项的打开文件夹功能
-            await page.evaluate((downloadDir) => {
-            // 等待下载管理器页面加载完成
-            setTimeout(() => {
-              // 查找所有「打开文件夹」按钮并修改其行为
-              const observer = new MutationObserver((mutations) => {
-                const buttons = document.querySelectorAll('cr-icon-button[title="打开文件夹"], cr-icon-button[title="Open folder"], cr-icon-button[aria-label="打开文件夹"], cr-icon-button[aria-label="Open folder"]');
-                
-                buttons.forEach(button => {
-                  if (!button.hasAttribute('data-modified')) {
-                    button.setAttribute('data-modified', 'true');
-                    
-                    // 替换原有的点击事件
-                    button.addEventListener('click', (event) => {
-                      event.stopPropagation();
-                      event.preventDefault();
-                      
-                      // 使用自定义消息通知主进程打开文件夹
-                      window.postMessage({
-                        type: 'OPEN_DOWNLOAD_FOLDER',
-                        path: downloadDir
-                      }, '*');
-                      
-                      return false;
-                    }, true);
-                  }
-                });
-              });
-              
-              // 开始观察 DOM 变化
-              observer.observe(document.body, { childList: true, subtree: true });
-              
-              // 添加消息监听器，接收来自主进程的响应
-              window.addEventListener('message', (event) => {
-                if (event.data && event.data.type === 'FOLDER_OPENED') {
-                  console.log('文件夹已打开:', event.data.path);
-                }
-              });
-            }, 1000);
-          }, downloadDir);
-        }
+          }
         } catch (error) {
           console.error(`下载处理出错: ${error.message}`);
         }
