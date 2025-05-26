@@ -1,6 +1,6 @@
 
     // 多账户浏览器指纹防护脚本
-    // 生成时间: 2025-05-23T03:51:22.664Z
+    // 生成时间: 2025-05-26T12:10:21.962Z
     
     // 在窗口上定义指纹配置
     window.__FINGERPRINT_CONFIG__ = window.__FINGERPRINT_CONFIG__ || {
@@ -14,7 +14,7 @@
       hardwareInfoProtection: true,
       sensorProtection: true,
       compatibleSites: '',
-      time: '2025-05-23T03:51:22.664Z'
+      time: '2025-05-26T12:10:21.962Z'
     };
     
     // 应用内部页面检测脚本
@@ -530,16 +530,20 @@
           }
           
           const domain = window.location.hostname;
-          // 兼容性列表可能使用逗号或换行符分隔
-          const compatibleSites = window.__FINGERPRINT_CONFIG__.compatibleSites.includes('
-') ?
-            window.__FINGERPRINT_CONFIG__.compatibleSites.split('
-') :
-            window.__FINGERPRINT_CONFIG__.compatibleSites.split(',');
+          const compatibleSitesStr = window.__FINGERPRINT_CONFIG__.compatibleSites;
           
-          for (const site of compatibleSites) {
-            if (domain === site || domain.endsWith('.' + site)) {
-              console.log('[指纹防护] 检测到兼容网站: ' + domain);
+          // 检查当前域名是否在兼容列表中
+          if (compatibleSitesStr.indexOf(domain) !== -1) {
+            console.log('[指纹防护] 检测到兼容网站: ' + domain);
+            return true;
+          }
+          
+          // 检查主域名
+          const parts = domain.split('.');
+          if (parts.length >= 2) {
+            const mainDomain = parts.slice(-2).join('.');
+            if (compatibleSitesStr.indexOf(mainDomain) !== -1) {
+              console.log('[指纹防护] 检测到兼容网站(主域名): ' + mainDomain);
               return true;
             }
           }

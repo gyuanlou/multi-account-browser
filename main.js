@@ -228,9 +228,32 @@ function createMainWindow() {
 
 // 应用程序已经准备就绪，直接初始化
 
+// 定期向所有窗口发送实例状态更新
+function setupInstanceStatusUpdater() {
+  // 清除可能存在的旧定时器
+  if (global.instanceStatusUpdater) {
+    clearInterval(global.instanceStatusUpdater);
+  }
+  
+  // 设置新的定时器，每30秒检查一次实例状态
+  // 这是一个备用机制，以防事件驱动机制失效
+  global.instanceStatusUpdater = setInterval(() => {
+    try {
+      // 获取实例列表将自动触发事件通知
+      browserManager.getRunningInstances();
+    } catch (error) {
+      console.error('定时检查实例状态失败:', error);
+    }
+  }, 30000); // 30秒间隔
+}
+
 // 首先初始化服务模块
 console.log('开始初始化服务模块...');
 initializeServices();
+
+// 启动实例状态更新器
+console.log('启动实例状态更新器...');
+setupInstanceStatusUpdater();
 
 // 注册 IPC 处理程序
 console.log('注册 IPC 处理程序...');
@@ -280,10 +303,27 @@ function registerIPCHandlers() {
     try {
       console.log(`请求打开文件夹: ${folderPath}`);
       
+      // 确保路径不为空
+      if (!folderPath) {
+        console.error('文件夹路径为空');
+        return { success: false, error: '文件夹路径为空' };
+      }
+      
+      // 规范化路径（移除引号和多余的空格）
+      folderPath = folderPath.trim().replace(/["']/g, '');
+      
       // 确保文件夹存在
       if (!fs.existsSync(folderPath)) {
         console.error(`文件夹不存在: ${folderPath}`);
-        return { success: false, error: '文件夹不存在' };
+        
+        // 尝试创建文件夹
+        try {
+          fs.mkdirSync(folderPath, { recursive: true });
+          console.log(`已创建文件夹: ${folderPath}`);
+        } catch (createError) {
+          console.error(`创建文件夹失败: ${createError.message}`);
+          return { success: false, error: `文件夹不存在且无法创建: ${createError.message}` };
+        }
       }
       
       // 使用 Electron 的 shell 模块打开文件夹
@@ -337,7 +377,9 @@ function registerIPCHandlers() {
   });
 
   ipcMain.handle('get-running-instances', () => {
-    return browserManager.getRunningInstances();
+    // 获取实例列表并返回
+    const instances = browserManager.getRunningInstances();
+    return instances;
   });
   
   // 获取浏览器实例状态常量

@@ -452,14 +452,20 @@ class EnhancedFingerprintManager {
           }
           
           const domain = window.location.hostname;
-          // 兼容性列表可能使用逗号或换行符分隔
-          const compatibleSites = window.__FINGERPRINT_CONFIG__.compatibleSites.includes('\n') ?
-            window.__FINGERPRINT_CONFIG__.compatibleSites.split('\n') :
-            window.__FINGERPRINT_CONFIG__.compatibleSites.split(',');
+          const compatibleSitesStr = window.__FINGERPRINT_CONFIG__.compatibleSites;
           
-          for (const site of compatibleSites) {
-            if (domain === site || domain.endsWith('.' + site)) {
-              console.log('[指纹防护] 检测到兼容网站: ' + domain);
+          // 检查当前域名是否在兼容列表中
+          if (compatibleSitesStr.indexOf(domain) !== -1) {
+            console.log('[指纹防护] 检测到兼容网站: ' + domain);
+            return true;
+          }
+          
+          // 检查主域名
+          const parts = domain.split('.');
+          if (parts.length >= 2) {
+            const mainDomain = parts.slice(-2).join('.');
+            if (compatibleSitesStr.indexOf(mainDomain) !== -1) {
+              console.log('[指纹防护] 检测到兼容网站(主域名): ' + mainDomain);
               return true;
             }
           }

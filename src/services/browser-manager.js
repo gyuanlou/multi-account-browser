@@ -234,6 +234,9 @@ class BrowserManager extends EventEmitter {
         };
       }
       
+      // 使用CDP监听浏览器事件
+      this._setupCDPEventListeners(browser, profileId);
+      
       // 添加额外的检测机制
       // 1. 监听浏览器上下文关闭事件
       if (browser.contexts && typeof browser.contexts === 'function') {
@@ -254,17 +257,7 @@ class BrowserManager extends EventEmitter {
         }
       }
       
-      // 2. 监听浏览器进程退出
-      if (instance.process) {
-        try {
-          instance.process.on('exit', (code) => {
-            console.log(`浏览器进程已退出: ${profileId}, 退出码: ${code}`);
-            this._markInstanceAsClosed(profileId, 'process-exit');
-          });
-        } catch (error) {
-          console.warn(`无法监听浏览器进程退出事件: ${error.message}`);
-        }
-      }
+      // 2. 监听浏览器进程退出由_setupCDPEventListeners处理
       
       // 3. 监听页面关闭事件
       const monitorPages = async () => {
@@ -276,6 +269,7 @@ class BrowserManager extends EventEmitter {
               // 监听每个页面的关闭事件
               pages.forEach(page => {
                 if (page && typeof page.on === 'function') {
+                  // 监听页面关闭事件
                   page.on('close', () => {
                     console.log(`页面已关闭: ${profileId}`);
                     // 检查是否所有页面都已关闭
@@ -294,6 +288,36 @@ class BrowserManager extends EventEmitter {
                         this._markInstanceAsClosed(profileId, 'pages-check-error');
                       }
                     }, 500);
+                  });
+                  
+                  // 监听页面错误事件，可能是用户关闭了浏览器窗口
+                  page.on('error', (error) => {
+                    console.log(`页面发生错误: ${profileId}, 错误: ${error.message}`);
+                    // 检查浏览器是否还能连接
+                    setTimeout(async () => {
+                      try {
+                        // 尝试获取页面，如果失败则认为浏览器已关闭
+                        await browser.pages();
+                      } catch (e) {
+                        console.log(`检测到浏览器已关闭: ${profileId}, 原因: ${e.message}`);
+                        this._markInstanceAsClosed(profileId, 'browser-error');
+                      }
+                    }, 1000);
+                  });
+                  
+                  // 监听页面崩溃事件
+                  page.on('crash', () => {
+                    console.log(`页面崩溃: ${profileId}`);
+                    // 检查浏览器是否还能连接
+                    setTimeout(async () => {
+                      try {
+                        // 尝试获取页面，如果失败则认为浏览器已关闭
+                        await browser.pages();
+                      } catch (e) {
+                        console.log(`检测到浏览器已关闭: ${profileId}, 原因: ${e.message}`);
+                        this._markInstanceAsClosed(profileId, 'browser-crash');
+                      }
+                    }, 1000);
                   });
                 }
               });
@@ -331,6 +355,11 @@ class BrowserManager extends EventEmitter {
           return await originalClose.apply(browser, args);
         };
       }
+      
+      // 5. 标记实例为运行中并主动通知所有渲染进程
+      this._markInstanceAsRunning(profileId, 'launch-success');
+      // 获取实例列表会自动触发通知
+      this.getRunningInstances();
       
       return browser;
     } catch (error) {
@@ -371,6 +400,10 @@ class BrowserManager extends EventEmitter {
       
       // 关闭成功后更新状态
       this._markInstanceAsClosed(profileId, 'user-close-success');
+      
+      // 主动通知所有渲染进程实例列表已更新
+      this.getRunningInstances();
+      
       return true;
     } catch (error) {
       console.error(`关闭浏览器实例 ${profileId} 失败:`, error);
@@ -407,7 +440,31 @@ class BrowserManager extends EventEmitter {
       }
     }
     
+    // 发送实例列表更新事件
+    this._notifyInstancesUpdated(instances);
+    
     return instances;
+  }
+  
+  /**
+   * 通知所有活跃的渲染进程实例列表已更新
+   * @param {Array} instances 实例列表
+   * @private
+   */
+  _notifyInstancesUpdated(instances) {
+    try {
+      const { BrowserWindow } = getElectron();
+      const windows = BrowserWindow.getAllWindows();
+      
+      // 向所有活跃的窗口发送实例列表更新事件
+      for (const win of windows) {
+        if (!win.isDestroyed() && win.webContents) {
+          win.webContents.send('instances-updated', instances);
+        }
+      }
+    } catch (error) {
+      console.error('通知实例列表更新失败:', error);
+    }
   }
   
   /**
@@ -481,18 +538,24 @@ class BrowserManager extends EventEmitter {
     
     // 发送状态变化事件
     try {
-      // 直接使用 Electron API
-      const { BrowserWindow } = require('electron');
-      const mainWindow = BrowserWindow.getAllWindows()[0];
+      // 使用 getElectron 函数获取 Electron API
+      const { BrowserWindow } = getElectron();
+      const windows = BrowserWindow.getAllWindows();
       
-      if (mainWindow && mainWindow.webContents) {
-        mainWindow.webContents.send('instance-status-changed', {
-          profileId,
-          oldStatus,
-          newStatus: status,
-          reason
-        });
+      // 向所有活跃的窗口发送状态变化事件
+      for (const win of windows) {
+        if (!win.isDestroyed() && win.webContents) {
+          win.webContents.send('instance-status-changed', {
+            profileId,
+            oldStatus,
+            newStatus: status,
+            reason
+          });
+        }
       }
+      
+      // 状态变化后，主动发送实例列表更新
+      this.getRunningInstances();
     } catch (error) {
       console.error('发送状态变化事件失败:', error);
     }
@@ -546,6 +609,74 @@ class BrowserManager extends EventEmitter {
    * @param {Object} browser 浏览器实例
    * @private
    */
+  /**
+   * 设置CDP事件监听器
+   * @param {Object} browser 浏览器实例
+   * @param {string} profileId 配置文件ID
+   * @private
+   */
+  async _setupCDPEventListeners(browser, profileId) {
+    if (!this.browserInstances.has(profileId)) return;
+    
+    const instance = this.browserInstances.get(profileId);
+    
+    try {
+      // 检查是否支持CDP
+      if (browser.createCDPSession && typeof browser.createCDPSession === 'function') {
+        // 获取第一个页面
+        const pages = await browser.pages();
+        if (pages && pages.length > 0) {
+          const page = pages[0];
+          try {
+            // 创建CDP会话
+            const client = await page.createCDPSession();
+            
+            // 监听目标崩溃事件
+            client.on('Inspector.targetCrashed', () => {
+              console.log(`[CDP] 浏览器崩溃: ${profileId}`);
+              this._markInstanceAsClosed(profileId, 'target-crashed');
+            });
+            
+            // 监听目标销毁事件
+            client.on('Target.targetDestroyed', () => {
+              console.log(`[CDP] 浏览器目标被销毁: ${profileId}`);
+              this._markInstanceAsClosed(profileId, 'target-destroyed');
+            });
+            
+            console.log(`[CDP] 成功设置CDP事件监听器: ${profileId}`);
+          } catch (error) {
+            console.error(`[CDP] 创建CDP会话失败: ${error.message}`);
+          }
+        }
+      }
+      
+      // 监听进程事件
+      if (instance.process) {
+        // 监听进程退出事件
+        instance.process.on('exit', (code) => {
+          console.log(`浏览器进程退出: ${profileId}, 退出码: ${code}`);
+          this._markInstanceAsClosed(profileId, 'process-exit');
+        });
+        
+        // 监听进程错误事件
+        instance.process.on('error', (error) => {
+          console.log(`浏览器进程错误: ${profileId}, 错误: ${error.message}`);
+          this._markInstanceAsClosed(profileId, 'process-error');
+        });
+        
+        console.log(`成功设置进程事件监听器: ${profileId}`);
+      }
+    } catch (error) {
+      console.error(`设置CDP事件监听器失败: ${error.message}`);
+    }
+  }
+  
+  /**
+   * 启动浏览器状态检查，作为事件监听的备用机制
+   * @param {string} profileId 配置文件ID
+   * @param {Object} browser 浏览器实例
+   * @private
+   */
   _startBrowserStatusCheck(profileId, browser) {
     if (!this.browserInstances.has(profileId)) return;
     
@@ -556,8 +687,8 @@ class BrowserManager extends EventEmitter {
       clearInterval(instance.statusCheckInterval);
     }
     
-    // 每 3 秒检查一次浏览器状态，提高检测程度
-    instance.statusCheckInterval = setInterval(() => {
+    // 作为备用机制，每10秒检查一次浏览器状态
+    instance.statusCheckInterval = setInterval(async () => {
       try {
         // 如果实例已经不是运行状态，停止检查
         if (instance.status !== INSTANCE_STATUS.RUNNING) {
@@ -574,34 +705,25 @@ class BrowserManager extends EventEmitter {
           try {
             const isConnected = browser.isConnected();
             if (!isConnected) {
-              console.log(`定期检查发现浏览器已断开连接: ${profileId}`);
+              console.log(`备用检查发现浏览器已断开连接: ${profileId}`);
               shouldMarkAsClosed = true;
             }
           } catch (e) {
-            // 忽略错误，不标记为关闭
-            console.log(`检查浏览器连接状态时出错: ${e.message}`);
-          }
-        }
-        
-        // 检查进程是否还在运行
-        if (instance.process && !shouldMarkAsClosed) {
-          try {
-            // 尝试发送信号 0（仅检查进程是否存在）
-            instance.process.kill(0);
-          } catch (e) {
-            // 如果发送信号失败，说明进程已经终止
-            console.log(`定期检查发现浏览器进程已终止: ${profileId}`);
+            console.log(`备用检查发现浏览器连接异常: ${e.message}`);
             shouldMarkAsClosed = true;
           }
         }
         
+        // 如果检测到浏览器已关闭，标记实例为已关闭
         if (shouldMarkAsClosed) {
-          this._markInstanceAsClosed(profileId, 'status-check');
+          this._markInstanceAsClosed(profileId, 'backup-check');
+          clearInterval(instance.statusCheckInterval);
+          instance.statusCheckInterval = null;
         }
       } catch (error) {
-        console.error(`浏览器状态检查失败: ${profileId}`, error);
+        console.error(`备用状态检查失败: ${profileId}`, error);
       }
-    }, 3000); // 每 3 秒检查一次，提高响应速度
+    }, 10000); // 每10秒检查一次，仅作为备用机制
   }
   /**
    * 连接到运行中的浏览器实例

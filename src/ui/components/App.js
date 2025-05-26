@@ -105,6 +105,13 @@ const App = {
       this.refreshRunningInstances();
     });
     
+    // 监听浏览器实例列表更新事件
+    window.ipcRenderer.on('instances-updated', async (event, instances) => {
+      console.log('收到实例列表更新');
+      // 直接使用主进程发送的实例列表数据
+      this.runningInstances = instances;
+    });
+    
     // 监听导入配置就绪事件
     window.ipcRenderer.on('import-profile-ready', async () => {
       try {
@@ -141,11 +148,8 @@ const App = {
     // 加载配置文件列表
     this.loadProfiles();
     
-    // 定时刷新运行中的实例
+    // 初始化时只刷新一次运行实例列表
     this.refreshRunningInstances();
-    setInterval(() => {
-      this.refreshRunningInstances();
-    }, 5000);
     
     // 延迟设置组件就绪状态，确保所有组件都已正确加载
     setTimeout(() => {
@@ -338,27 +342,8 @@ const App = {
     // 刷新运行中的实例
     async refreshRunningInstances() {
       try {
-        console.log('开始刷新运行实例列表...');
+        // 使用事件驱动机制，只在需要时才主动获取实例列表
         const instances = await window.ipcRenderer.invoke('get-running-instances');
-        //console.log('获取到运行实例列表:', JSON.stringify(instances, null, 2));
-        
-        // 检查全局状态常量
-        //console.log('当前全局状态常量:', JSON.stringify(window.INSTANCE_STATUS, null, 2));
-        
-        // // 检查实例状态
-        // if (instances && instances.length > 0) {
-        //   instances.forEach(instance => {
-        //     console.log(`实例 ${instance.profileId} 状态:`, instance.status);
-        //     console.log(`是否在运行:`, instance.status === window.INSTANCE_STATUS.RUNNING);
-        //     console.log(`实例详情:`, JSON.stringify({
-        //       profileId: instance.profileId,
-        //       status: instance.status,
-        //       browserType: instance.browserType,
-        //       startTime: instance.startTime
-        //     }, null, 2));
-        //   });
-        // }
-        
         this.runningInstances = instances;
       } catch (error) {
         console.error('获取运行实例失败:', error);
