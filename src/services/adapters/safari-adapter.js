@@ -139,16 +139,16 @@ class SafariAdapter extends BrowserAdapter {
         try {
           const downloadPath = launchOptions.downloadsPath;
           if (downloadPath) {
-            // 使用基类中的通用下载处理方法
-            const result = await this._handleDownload(download, downloadPath, 'Safari');
+            // 使用基类中的通用下载处理方法，并传递页面对象以显示通知
+            const result = await this._handleDownload(download, downloadPath, 'Safari', page);
             
             if (!result.success) {
               console.error(`Safari下载失败: ${result.error}`);
             } else {
-              console.log(`Safari下载: 文件已保存到 ${result.path}`);  
+              console.log(`Safari下载成功: ${result.path}`);
+            }
           }
-        } 
-      }catch (error) {
+        } catch (error) {
           console.error(`下载处理出错: ${error.message}`);
         }
       });

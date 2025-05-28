@@ -822,10 +822,11 @@ class BrowserAdapter {
    * @param {Object} download Playwright下载对象
    * @param {string} downloadDir 下载目录
    * @param {string} browserName 浏览器名称（用于日志）
+   * @param {Object} [page] Playwright页面对象（用于显示通知）
    * @returns {Promise<{success: boolean, path: string, error: string|null}>} 下载结果
    * @protected
    */
-  async _handleDownload(download, downloadDir, browserName) {
+  async _handleDownload(download, downloadDir, browserName, page = null) {
     try {
       // 确保下载目录存在
       if (!fs.existsSync(downloadDir)) {
@@ -905,17 +906,150 @@ class BrowserAdapter {
       
       // 检查文件是否存在
       if (fs.existsSync(savePath)) {
-        // 只删除当前下载的UUID格式临时文件
+        // 删除所有与UUID相关的临时文件
         if (defaultPath && fs.existsSync(defaultPath)) {
           try {
-            fs.unlinkSync(defaultPath);
-            console.log(`${browserName}下载: 删除UUID格式的临时文件 ${defaultPath}`);
+            // 根据不同的操作系统进行特定处理
+            if (process.platform === 'win32') {
+              // Windows系统特定处理
+              // 在Windows上，文件可能被其他进程锁定，添加额外的延时
+              await new Promise(resolve => setTimeout(resolve, 500));
+              
+              try {
+                fs.unlinkSync(defaultPath);
+                console.log(`${browserName}下载: 删除UUID格式的临时文件 ${defaultPath}`);
+              } catch (winErr) {
+                if (winErr.code === 'EBUSY' || winErr.code === 'EPERM') {
+                  console.log(`${browserName}下载: 文件被占用，将在应用退出时删除 ${defaultPath}`);
+                  // 将文件添加到待删除列表，可以在应用退出时处理
+                  // 这里可以实现一个全局的待删除文件列表
+                } else {
+                  console.error(`${browserName}下载: 删除UUID格式的临时文件失败 ${winErr.message}`);
+                }
+              }
+              
+              // 尝试删除可能存在的没有扩展名的UUID文件
+              // 使用path模块处理路径，确保跨平台兼容性
+              const extname = path.extname(defaultPath);
+              const dirname = path.dirname(defaultPath);
+              const basename = path.basename(defaultPath, extname);
+              const uuidWithoutExt = path.join(dirname, basename);
+              
+              if (fs.existsSync(uuidWithoutExt) && uuidWithoutExt !== defaultPath) {
+                try {
+                  fs.unlinkSync(uuidWithoutExt);
+                  console.log(`${browserName}下载: 删除没有扩展名的UUID格式临时文件 ${uuidWithoutExt}`);
+                } catch (winErr) {
+                  if (winErr.code === 'EBUSY' || winErr.code === 'EPERM') {
+                    console.log(`${browserName}下载: 文件被占用，将在应用退出时删除 ${uuidWithoutExt}`);
+                  } else {
+                    console.error(`${browserName}下载: 删除没有扩展名的UUID格式临时文件失败 ${winErr.message}`);
+                  }
+                }
+              }
+            } else if (process.platform === 'darwin') {
+              // macOS系统特定处理
+              // 在macOS上，可能有资源分叉文件和.DS_Store文件
+              fs.unlinkSync(defaultPath);
+              console.log(`${browserName}下载: 删除UUID格式的临时文件 ${defaultPath}`);
+              
+              // 尝试删除可能存在的没有扩展名的UUID文件
+              const extname = path.extname(defaultPath);
+              const dirname = path.dirname(defaultPath);
+              const basename = path.basename(defaultPath, extname);
+              const uuidWithoutExt = path.join(dirname, basename);
+              
+              if (fs.existsSync(uuidWithoutExt) && uuidWithoutExt !== defaultPath) {
+                fs.unlinkSync(uuidWithoutExt);
+                console.log(`${browserName}下载: 删除没有扩展名的UUID格式临时文件 ${uuidWithoutExt}`);
+              }
+              
+              // 尝试删除可能的资源分叉文件
+              const resourceForkPath = path.join(dirname, `._${basename}${extname}`);
+              if (fs.existsSync(resourceForkPath)) {
+                try {
+                  fs.unlinkSync(resourceForkPath);
+                  console.log(`${browserName}下载: 删除macOS资源分叉文件 ${resourceForkPath}`);
+                } catch (macErr) {
+                  console.error(`${browserName}下载: 删除macOS资源分叉文件失败 ${macErr.message}`);
+                }
+              }
+              
+              // 尝试清理下载目录中的.DS_Store文件
+              const dsStorePath = path.join(downloadDir, '.DS_Store');
+              if (fs.existsSync(dsStorePath)) {
+                try {
+                  fs.unlinkSync(dsStorePath);
+                  console.log(`${browserName}下载: 删除macOS .DS_Store文件 ${dsStorePath}`);
+                } catch (dsErr) {
+                  // 忽略.DS_Store删除错误，这不是关键错误
+                }
+              }
+            } else {
+              // Linux或其他系统的处理
+              fs.unlinkSync(defaultPath);
+              console.log(`${browserName}下载: 删除UUID格式的临时文件 ${defaultPath}`);
+              
+              // 尝试删除可能存在的没有扩展名的UUID文件
+              const extname = path.extname(defaultPath);
+              const dirname = path.dirname(defaultPath);
+              const basename = path.basename(defaultPath, extname);
+              const uuidWithoutExt = path.join(dirname, basename);
+              
+              if (fs.existsSync(uuidWithoutExt) && uuidWithoutExt !== defaultPath) {
+                fs.unlinkSync(uuidWithoutExt);
+                console.log(`${browserName}下载: 删除没有扩展名的UUID格式临时文件 ${uuidWithoutExt}`);
+              }
+            }
+            
+            // 对所有平台，尝试清理下载目录中的其他UUID格式文件
+            // 使用更安全的方式检测和删除临时文件
+            try {
+              const downloadDirFiles = fs.readdirSync(downloadDir);
+              const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\.[^/.]+)?$/i;
+              
+              // 获取当前下载的UUID部分（不包含扩展名）
+              const currentUuid = path.basename(defaultPath, path.extname(defaultPath));
+              
+              for (const file of downloadDirFiles) {
+                // 只处理符合UUID格式的文件，且不是当前保存的文件
+                if (uuidPattern.test(file) && 
+                    file !== path.basename(savePath) && 
+                    file.startsWith(currentUuid)) {
+                  
+                  const filePath = path.join(downloadDir, file);
+                  
+                  try {
+                    // 添加延时，确保文件不再被占用
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    
+                    // 检查文件是否存在并尝试删除
+                    if (fs.existsSync(filePath)) {
+                      fs.unlinkSync(filePath);
+                      console.log(`${browserName}下载: 删除相关的UUID格式临时文件 ${filePath}`);
+                    }
+                  } catch (cleanupErr) {
+                    // 忽略清理错误，不应影响主要下载流程
+                    console.log(`${browserName}下载: 删除相关的UUID格式临时文件失败 ${filePath}`);
+                  }
+                }
+              }
+            } catch (listErr) {
+              // 忽略目录读取错误，不应影响主要下载流程
+              console.log(`${browserName}下载: 读取下载目录失败 ${listErr.message}`);
+            }
           } catch (err) {
             console.error(`${browserName}下载: 删除UUID格式的临时文件失败 ${err.message}`);
           }
         }
         
         console.log(`${browserName}下载: 文件成功保存到 ${savePath}`);
+        
+        // 如果提供了页面对象，显示下载完成通知
+        if (page) {
+          await this._showDownloadNotification(page, path.basename(savePath), downloadDir);
+        }
+        
         return { success: true, path: savePath, error: null };
       } else {
         console.error(`${browserName}下载: 文件保存失败 ${savePath}`);
@@ -924,6 +1058,89 @@ class BrowserAdapter {
     } catch (error) {
       console.error(`${browserName}下载: 处理下载失败 ${error.message}`);
       return { success: false, path: null, error: error.message };
+    }
+  }
+  
+  /**
+   * 在页面中显示下载完成通知
+   * @param {Object} page Playwright页面对象
+   * @param {string} filename 文件名
+   * @param {string} downloadDir 下载目录
+   * @returns {Promise<void>}
+   * @protected
+   */
+  async _showDownloadNotification(page, filename, downloadDir) {
+    try {
+      await page.evaluate(({ filename, downloadDir }) => {
+        // 创建下载完成通知
+        const notification = document.createElement('div');
+        notification.style.position = 'fixed';
+        notification.style.bottom = '20px';
+        notification.style.right = '20px';
+        notification.style.backgroundColor = '#4CAF50';
+        notification.style.color = 'white';
+        notification.style.padding = '10px';
+        notification.style.borderRadius = '5px';
+        notification.style.zIndex = '9999';
+        notification.style.boxShadow = '0 2px 5px rgba(0,0,0,0.3)';
+        notification.style.display = 'flex';
+        notification.style.alignItems = 'center';
+        notification.style.justifyContent = 'space-between';
+        notification.style.minWidth = '250px';
+        
+        // 添加文件信息
+        const textDiv = document.createElement('div');
+        textDiv.innerHTML = `<div>下载完成</div><div style="font-size:12px;margin-top:5px;">${filename}</div>`;
+        notification.appendChild(textDiv);
+        
+        // 添加打开文件夹按钮
+        const button = document.createElement('button');
+        button.innerText = '打开文件夹';
+        button.style.backgroundColor = '#2196F3';
+        button.style.border = 'none';
+        button.style.color = 'white';
+        button.style.padding = '5px 10px';
+        button.style.borderRadius = '3px';
+        button.style.cursor = 'pointer';
+        button.style.marginLeft = '10px';
+        
+        // 添加点击事件
+        button.onclick = () => {
+          // 调用打开文件夹的函数
+          window.electronAPI.openFolder(downloadDir);
+          document.body.removeChild(notification);
+        };
+        
+        notification.appendChild(button);
+        
+        // 添加关闭按钮
+        const closeButton = document.createElement('button');
+        closeButton.innerText = 'X';
+        closeButton.style.backgroundColor = 'transparent';
+        closeButton.style.border = 'none';
+        closeButton.style.color = 'white';
+        closeButton.style.marginLeft = '10px';
+        closeButton.style.cursor = 'pointer';
+        closeButton.style.fontWeight = 'bold';
+        
+        closeButton.onclick = () => {
+          document.body.removeChild(notification);
+        };
+        
+        notification.appendChild(closeButton);
+        
+        // 添加到页面
+        document.body.appendChild(notification);
+        
+        // 5秒后自动关闭
+        setTimeout(() => {
+          if (document.body.contains(notification)) {
+            document.body.removeChild(notification);
+          }
+        }, 5000);
+      }, { filename, downloadDir });
+    } catch (error) {
+      console.error(`注入下载完成通知脚本失败: ${error.message}`);
     }
   }
 }

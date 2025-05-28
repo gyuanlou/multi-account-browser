@@ -245,18 +245,16 @@ class FirefoxAdapter extends BrowserAdapter {
         try {
           const downloadPath = launchOptions.firefoxUserPrefs['browser.download.dir'];
           if (downloadPath) {
-            // 使用基类中的通用下载处理方法
-            const result = await this._handleDownload(download, downloadPath, 'Firefox');
+            // 使用基类中的通用下载处理方法，并传递页面对象以显示通知
+            const result = await this._handleDownload(download, downloadPath, 'Firefox', page);
             
             if (!result.success) {
               console.error(`Firefox下载失败: ${result.error}`);
             } else {
-              console.log(`Firefox下载: 文件已保存到 ${result.path}`);
-              
-               
+              console.log(`Firefox下载成功: ${result.path}`);
+            }
           }
-        }
-      }catch (error) {
+        } catch (error) {
           console.error(`下载处理出错: ${error.message}`);
         }
       });

@@ -1,6 +1,6 @@
 
         // Brave风格指纹防护脚本
-        // 生成时间: 2025-05-26T12:10:21.963Z
+        // 生成时间: 2025-05-28T01:04:47.853Z
         
         // 在窗口上定义指纹配置
         window.__FINGERPRINT_CONFIG__ = { 
@@ -13,7 +13,7 @@
           webrtcProtection: true,
           hardwareInfoProtection: true,
           compatibleSites: 'aliyun.com\nalipay.com\ntaobao.com\ntmall.com\nweibo.com\nqq.com\nbaidu.com',
-          time: '2025-05-26T12:10:21.963Z'
+          time: '2025-05-28T01:04:47.853Z'
         };
         
         // 添加域名隔离的指纹种子生成
@@ -79,7 +79,7 @@
           }
           
           // 为当前域名创建一个固定的随机数生成器
-          const sessionKey = 'Mon May 26 2025';
+          const sessionKey = 'Wed May 28 2025';
           const combinedKey = domain + sessionKey;
           const random = createSeededRandom(combinedKey);
           

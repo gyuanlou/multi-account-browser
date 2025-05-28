@@ -1,6 +1,6 @@
 
     // 多账户浏览器指纹防护脚本
-    // 生成时间: 2025-05-26T12:10:21.962Z
+    // 生成时间: 2025-05-28T01:04:47.852Z
     
     // 在窗口上定义指纹配置
     window.__FINGERPRINT_CONFIG__ = window.__FINGERPRINT_CONFIG__ || {
@@ -14,7 +14,7 @@
       hardwareInfoProtection: true,
       sensorProtection: true,
       compatibleSites: '',
-      time: '2025-05-26T12:10:21.962Z'
+      time: '2025-05-28T01:04:47.852Z'
     };
     
     // 应用内部页面检测脚本

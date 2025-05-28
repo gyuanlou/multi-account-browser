@@ -288,14 +288,13 @@ class EdgeAdapter extends BrowserAdapter {
           if (downloadPath) {
             const downloadDir = downloadPath.split('=')[1];
             
-            // 使用基类中的通用下载处理方法
-            const result = await this._handleDownload(download, downloadDir, 'Edge');
+            // 使用基类中的通用下载处理方法，并传递页面对象以显示通知
+            const result = await this._handleDownload(download, downloadDir, 'Edge', page);
             
             if (!result.success) {
               console.error(`Edge下载失败: ${result.error}`);
             } else {
-              console.log(`Edge下载: 文件已保存到 ${result.path}`);
-            
+              console.log(`Edge下载成功: ${result.path}`);
             }
           }
         } catch (error) {

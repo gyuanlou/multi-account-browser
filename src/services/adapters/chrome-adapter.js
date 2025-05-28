@@ -359,16 +359,13 @@ class ChromeAdapter extends BrowserAdapter {
           if (downloadPath) {
             const downloadDir = downloadPath.split('=')[1];
             
-            // 使用基类的通用下载处理方法
-            const result = await this._handleDownload(download, downloadDir, 'Chrome');
+            // 使用基类的通用下载处理方法，并传递页面对象以显示通知
+            const result = await this._handleDownload(download, downloadDir, 'Chrome', page);
             
             if (!result.success) {
               console.error(`Chrome下载失败: ${result.error}`);
             } else {
               console.log(`Chrome下载成功: ${result.path}`);
-              
-              // 获取文件名（从路径中提取）
-              const filename = path.basename(result.path);
             }
           }
         } catch (error) {
