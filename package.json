@@ -1,6 +1,6 @@
 {
   "name": "multi-account-browser",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "多账号浏览器管理工具，支持独立指纹和代理设置",
   "main": "index.js",
   "scripts": {
