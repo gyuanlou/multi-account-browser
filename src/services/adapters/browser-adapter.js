@@ -1107,7 +1107,15 @@ class BrowserAdapter {
         // 添加点击事件
         button.onclick = () => {
           // 调用打开文件夹的函数
-          window.electronAPI.openFolder(downloadDir);
+          // 使用downloadHandler接口，与preload/download-handler.js保持一致
+          if (window.downloadHandler && typeof window.downloadHandler.openFolder === 'function') {
+            window.downloadHandler.openFolder(downloadDir);
+          } else if (window.electronAPI && typeof window.electronAPI.openFolder === 'function') {
+            // 兼容旧版本接口
+            window.electronAPI.openFolder(downloadDir);
+          } else {
+            console.error('找不到打开文件夹的接口');
+          }
           document.body.removeChild(notification);
         };
         
