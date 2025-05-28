@@ -226,17 +226,18 @@ jobs:
           echo "## 中文 | [English](#multi-account-browser-v${{ steps.get_version.outputs.version }})" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           echo "### 更新内容" >> CHANGELOG.md        
-          echo "- 改进浏览器适配器下载功能，确保所有浏览器能正确保存文件名" >> CHANGELOG.md
-          echo "- 将文件名处理方法移至基类，减少代码重复" >> CHANGELOG.md
-          echo "- 添加对空文件名或无效文件名的处理，自动生成基于时间戳的文件名" >> CHANGELOG.md
-          echo "- 增强文件扩展名识别功能，支持从URL和Content-Type中提取扩展名" >> CHANGELOG.md
-          echo "- 修复Edge、Firefox和Safari适配器下载处理中的潜在问题" >> CHANGELOG.md
+          echo "- 增强了Windows、macOS和Linux系统下的下载处理逻辑兼容性" >> CHANGELOG.md
+          echo "- 修复了临时文件清理机制，确保 UUID 格式文件被正确删除" >> CHANGELOG.md
+          echo "- 统一了下载完成通知功能，移至基类实现减少代码重复" >> CHANGELOG.md
+          echo "- 添加了自动重命名功能，避免覆盖已有文件" >> CHANGELOG.md
+          echo "- 优化了“打开文件夹”功能，提升用户体验" >> CHANGELOG.md
+          echo "- 修复了Windows系统上的文件锁定问题" >> CHANGELOG.md
+          echo "- 增强了macOS系统上的资源分叉文件处理" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           echo "### 下载地址" >> CHANGELOG.md
           echo "- [Windows 版本](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/multi-account-browser-${{ steps.get_version.outputs.version }}-windows.exe)" >> CHANGELOG.md
           echo "- [macOS 版本](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/multi-account-browser-${{ steps.get_version.outputs.version }}-mac.dmg)" >> CHANGELOG.md
           echo "- [Linux 版本](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/multi-account-browser-${{ steps.get_version.outputs.version }}-linux.AppImage)" >> CHANGELOG.md
-          echo "" >> CHANGELOG.md
           
           # 英文版本
           echo "---" >> CHANGELOG.md
@@ -246,11 +247,13 @@ jobs:
           echo "## English | [中文](#多账号浏览器-v${{ steps.get_version.outputs.version }})" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           echo "### Updates" >> CHANGELOG.md       
-          echo "- Improved browser adapter download functionality to ensure correct filename handling across all browsers" >> CHANGELOG.md
-          echo "- Moved filename handling methods to base class, reducing code duplication" >> CHANGELOG.md
-          echo "- Added handling for empty or invalid filenames, automatically generating timestamp-based filenames" >> CHANGELOG.md
-          echo "- Enhanced file extension recognition, supporting extraction from URLs and Content-Type" >> CHANGELOG.md
-          echo "- Fixed potential issues in Edge, Firefox and Safari adapters' download handling" >> CHANGELOG.md
+          echo "- Enhanced download handling compatibility for Windows, macOS, and Linux systems" >> CHANGELOG.md
+          echo "- Fixed temporary file cleanup mechanism to ensure UUID format files are properly deleted" >> CHANGELOG.md
+          echo "- Unified download completion notification functionality in the base class to reduce code duplication" >> CHANGELOG.md
+          echo "- Added automatic file renaming to avoid overwriting existing files" >> CHANGELOG.md
+          echo "- Optimized 'Open Folder' functionality for better user experience" >> CHANGELOG.md
+          echo "- Fixed file locking issues on Windows systems" >> CHANGELOG.md
+          echo "- Enhanced resource fork file handling on macOS systems" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           echo "### Downloads" >> CHANGELOG.md
           echo "- [Windows Version](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/multi-account-browser-${{ steps.get_version.outputs.version }}-windows.exe)" >> CHANGELOG.md
